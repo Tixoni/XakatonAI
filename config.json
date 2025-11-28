@@ -45,6 +45,13 @@
       "y_offset": 0.05,
       "width": 0.3,
       "height": 0.15
+    },
+    "fixed_roi": {
+      "enabled": false,
+      "x": 0.0,
+      "y": 0.0,
+      "width": 0.2,
+      "height": 0.1
     }
   }
 }

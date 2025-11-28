@@ -3,10 +3,12 @@
 yolov8*.pt
 yolov5*.pt
 
-# Выходные видео
-output*.mp4
-result*.mp4
-*_detected.mp4
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.flv
+*.wmv
 
 # Python
 __pycache__/

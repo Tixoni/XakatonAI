@@ -254,28 +254,48 @@ def process_video(video_path, detector, config):
                     tracks = tracker.update(resized_frame, detections)
                     
                     # Распознавание номеров поездов
-                    if use_ocr and ocr_reader is not None and tracks:
-                        for track_id, class_id, confidence, x1, y1, x2, y2 in tracks:
-                            # Распознаем номер только для поездов (class_id = 6)
-                            if class_id == 6:  # train
-                                track = tracker.tracks.get(track_id)
-                                if track and track.train_number is None:
-                                    # Пытаемся распознать номер только один раз для каждого трека
-                                    try:
-                                        roi_offset = ocr_cfg.get("roi_offset", None)
-                                        train_number = ocr_reader.recognize_from_train_bbox(
-                                            resized_frame, (x1, y1, x2, y2), roi_offset
-                                        )
-                                        if train_number:
+                    if use_ocr and ocr_reader is not None:
+                        # Проверяем, используется ли фиксированная область для номера
+                        fixed_roi = ocr_cfg.get("fixed_roi", None)
+                        
+                        if fixed_roi and fixed_roi.get("enabled", False):
+                            # Используем фиксированную область кадра
+                            train_number = ocr_reader.recognize_train_number(
+                                resized_frame, fixed_roi
+                            )
+                            if train_number:
+                                # Присваиваем номер всем поездам в кадре
+                                for track_id, class_id, _, _, _, _, _ in tracks:
+                                    if class_id == 6:  # train
+                                        track = tracker.tracks.get(track_id)
+                                        if track:
                                             track.train_number = train_number
-                                            print(f"Распознан номер поезда ID:{track_id}: {train_number}")
-                                    except Exception as e:
-                                        if debug_cfg.get("log_detection_details"):
-                                            print(f"Ошибка OCR для трека {track_id}: {e}")
-                                
-                                # Добавляем номер в словарь для отрисовки
-                                if track and track.train_number:
-                                    train_numbers[track_id] = track.train_number
+                                            train_numbers[track_id] = train_number
+                                if train_number and processed_count % 30 == 0:
+                                    print(f"Распознан номер поезда из фиксированной области: {train_number}")
+                        elif tracks:
+                            # Используем область детектированного поезда
+                            for track_id, class_id, confidence, x1, y1, x2, y2 in tracks:
+                                # Распознаем номер только для поездов (class_id = 6)
+                                if class_id == 6:  # train
+                                    track = tracker.tracks.get(track_id)
+                                    if track and track.train_number is None:
+                                        # Пытаемся распознать номер только один раз для каждого трека
+                                        try:
+                                            roi_offset = ocr_cfg.get("roi_offset", None)
+                                            train_number = ocr_reader.recognize_from_train_bbox(
+                                                resized_frame, (x1, y1, x2, y2), roi_offset
+                                            )
+                                            if train_number:
+                                                track.train_number = train_number
+                                                print(f"Распознан номер поезда ID:{track_id}: {train_number}")
+                                        except Exception as e:
+                                            if debug_cfg.get("log_detection_details"):
+                                                print(f"Ошибка OCR для трека {track_id}: {e}")
+                                    
+                                    # Добавляем номер в словарь для отрисовки
+                                    if track and track.train_number:
+                                        train_numbers[track_id] = track.train_number
                     
                     if tracks and len(tracks) > 0:
                         # Отрисовка с ID треков и номерами поездов
