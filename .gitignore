@@ -1,0 +1,38 @@
+# Веса моделей YOLO (большие файлы)
+*.weights
+yolov4.weights
+yolov3.weights
+yolov5*.pt
+
+# Конфигурационные файлы (личные настройки)
+config.json
+
+# Выходные видео
+output*.mp4
+result*.mp4
+*_detected.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Операционная система
+.DS_Store
+Thumbs.db
+
