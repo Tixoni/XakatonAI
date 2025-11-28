@@ -3,9 +3,6 @@
 yolov8*.pt
 yolov5*.pt
 
-# Конфигурационные файлы (личные настройки)
-config.json
-
 # Выходные видео
 output*.mp4
 result*.mp4

@@ -1,0 +1,50 @@
+{
+  "input_file": "people_and_work.mp4",
+  "yolo": {
+    "model": "yolo11m.pt", 
+    "device": "cpu"
+  },
+  "detection": {
+    "confidence_threshold": 0.5,
+    "target_classes": [0, 6],
+    "class_names": {
+      "0": "person",
+      "6": "train"
+    }
+  },
+  "video_optimization": {
+    "target_fps": 30,
+    "max_width": 1280,
+    "max_height": 540,
+    "frame_skip": 1,
+    "maintain_aspect_ratio": true,
+    "keep_width_native": true
+  },
+  "processing": {
+    "show_preview": true,
+    "half_precision": false,
+    "save_results": true,
+    "output_dir": "results"
+  },
+  "debug": {
+    "show_filtered_objects": true,
+    "log_detection_details": true
+  },
+  "re_identification": {
+    "enabled": true,
+    "max_distance": 0.5,
+    "max_age": 10,
+    "min_hits": 8,
+    "iou_threshold": 0.25
+  },
+  "train_number_ocr": {
+    "enabled": false,
+    "engine": "easyocr",
+    "roi_offset": {
+      "x_offset": 0.1,
+      "y_offset": 0.05,
+      "width": 0.3,
+      "height": 0.15
+    }
+  }
+}
