@@ -26,7 +26,11 @@ class TrainNumberOCR:
         if ocr_engine == "easyocr":
             try:
                 import easyocr
-                self.reader = easyocr.Reader(languages, gpu=False)
+                import warnings
+                # Подавляем предупреждение о pin_memory при использовании CPU
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message=".*pin_memory.*")
+                    self.reader = easyocr.Reader(languages, gpu=False)
                 print(f"EasyOCR инициализирован для языков: {languages}")
             except ImportError:
                 print("EasyOCR не установлен. Установите: pip install easyocr")
@@ -92,26 +96,45 @@ class TrainNumberOCR:
             return None
         
         try:
-            # Предобработка
-            processed = self.preprocess_image(roi)
+            # Пробуем распознавание без предобработки (для лучшего качества)
+            results_raw = self.reader.readtext(roi)
             
-            # Распознавание
-            results = self.reader.readtext(processed)
+            # Если не получилось, пробуем с предобработкой
+            if not results_raw or len(results_raw) == 0:
+                processed = self.preprocess_image(roi)
+                results = self.reader.readtext(processed)
+            else:
+                results = results_raw
             
             if not results:
                 return None
             
-            # Объединяем все найденные тексты
-            texts = []
+            # Объединяем все найденные тексты, сортируем по уверенности
+            texts_with_conf = []
             for (bbox, text, confidence) in results:
-                if confidence > 0.3:  # Минимальная уверенность
-                    texts.append(text.strip())
+                if confidence > 0.2:  # Снижаем порог для лучшего распознавания
+                    texts_with_conf.append((text.strip(), confidence))
             
-            if texts:
-                combined_text = " ".join(texts)
-                # Очищаем текст от лишних символов
-                cleaned = re.sub(r'[^\w\s]', '', combined_text)
-                return cleaned.strip()
+            if texts_with_conf:
+                # Сортируем по уверенности (от большей к меньшей)
+                texts_with_conf.sort(key=lambda x: x[1], reverse=True)
+                
+                # Берем текст с наибольшей уверенностью или объединяем несколько
+                if len(texts_with_conf) == 1:
+                    combined_text = texts_with_conf[0][0]
+                else:
+                    # Объединяем несколько результатов
+                    combined_text = " ".join([t[0] for t in texts_with_conf[:3]])  # Берем до 3 лучших
+                
+                # Очищаем текст, но сохраняем пробелы и кириллицу
+                # Убираем только специальные символы, оставляем буквы, цифры и пробелы
+                cleaned = re.sub(r'[^\w\sА-Яа-яЁё]', '', combined_text)
+                cleaned = re.sub(r'\s+', ' ', cleaned)  # Убираем множественные пробелы
+                result = cleaned.strip()
+                
+                # Проверяем, что результат не пустой и содержит хотя бы одну букву или цифру
+                if result and (re.search(r'[А-Яа-яЁёA-Za-z]', result) or re.search(r'\d', result)):
+                    return result
             
             return None
         except Exception as e:
@@ -191,6 +214,58 @@ class TrainNumberOCR:
             return self.recognize_text_tesseract(roi)
         
         return None
+    
+    def recognize_from_right_half(self, frame: np.ndarray) -> Optional[str]:
+        """
+        Распознавание номера поезда из правой половины экрана
+        (разделение вертикальной чертой по середине, ищем в правой половине)
+        
+        Args:
+            frame: кадр изображения
+            
+        Returns:
+            распознанный номер поезда или None
+        """
+        if self.reader is None:
+            return None
+        
+        h, w = frame.shape[:2]
+        
+        # Центр экрана - вертикальная черта по середине
+        center_x = w // 2
+        
+        # Правая половина экрана: от центра до края по всей высоте
+        x = center_x  # Начинаем с центра по X
+        y = 0  # Начинаем с верха экрана
+        width = w - center_x  # Вся правая половина ширины
+        height = h  # Вся высота экрана
+        
+        # Проверяем границы
+        x = max(0, min(w - 1, x))
+        y = max(0, min(h - 1, y))
+        width = max(1, min(w - x, width))
+        height = max(1, min(h - y, height))
+        
+        # Извлекаем ROI
+        roi = frame[y:y+height, x:x+width]
+        
+        if roi.size == 0:
+            return None
+        
+        # Распознавание в зависимости от движка
+        if self.ocr_engine == "easyocr":
+            return self.recognize_text_easyocr(roi)
+        elif self.ocr_engine == "tesseract":
+            return self.recognize_text_tesseract(roi)
+        
+        return None
+    
+    def recognize_from_bottom_right_quadrant(self, frame: np.ndarray) -> Optional[str]:
+        """
+        Распознавание номера поезда из правого нижнего квадранта кадра
+        (устаревший метод, используйте recognize_from_right_half)
+        """
+        return self.recognize_from_right_half(frame)
     
     def recognize_from_train_bbox(self, frame: np.ndarray, 
                                  bbox: Tuple[int, int, int, int],

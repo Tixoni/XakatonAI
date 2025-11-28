@@ -175,15 +175,25 @@ class YOLODetector:
             else:
                 label = f"{class_name}: {confidence:.2f}"
             
-            label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
-            label_y = max(y1, label_size[1] + 10)
+            label_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+            label_height = label_size[1] + baseline
             
-            # Фон для текста
-            cv2.rectangle(result_frame, (x1, label_y - label_size[1] - 10),
-                         (x1 + label_size[0], label_y), color, -1)
+            # Размещаем текст сверху рамки (выше y1)
+            # Если рамка слишком близко к верху экрана, размещаем внутри, но стараемся сверху
+            label_y = y1 - 5  # 5 пикселей выше верхней границы рамки
+            
+            # Если текст выходит за верхний край экрана, размещаем его внутри рамки
+            if label_y < label_height:
+                label_y = y1 + label_height + 5
+            
+            # Фон для текста (прямоугольник за текстом)
+            bg_y1 = label_y - label_height
+            bg_y2 = label_y
+            cv2.rectangle(result_frame, (x1, bg_y1),
+                         (x1 + label_size[0], bg_y2), color, -1)
             
             # Текст
-            cv2.putText(result_frame, label, (x1, label_y - 5),
+            cv2.putText(result_frame, label, (x1, label_y - baseline),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
         
         return result_frame

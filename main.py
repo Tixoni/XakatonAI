@@ -1,6 +1,10 @@
 import sys
 import os
+import warnings
 from pathlib import Path
+
+# Подавляем предупреждение о pin_memory при использовании CPU
+warnings.filterwarnings("ignore", message=".*pin_memory.*", category=UserWarning)
 
 # Импортируем наши модули
 from src.config_loader import load_config

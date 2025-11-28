@@ -3,12 +3,19 @@
 yolov8*.pt
 yolov5*.pt
 
+
 *.mp4
 *.avi
 *.mov
 *.mkv
 *.flv
 *.wmv
+
+# Выходные видео
+output*.mp4
+result*.mp4
+*_detected.mp4
+
 
 # Python
 __pycache__/

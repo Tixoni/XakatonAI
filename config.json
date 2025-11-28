@@ -1,5 +1,5 @@
 {
-  "input_file": "people_and_work.mp4",
+  "input_file": "short_vid.mp4",
   "yolo": {
     "model": "yolo11m.pt", 
     "device": "cpu"
@@ -12,8 +12,20 @@
       "6": "train"
     }
   },
+  "colors": {
+    "person": [0, 255, 0],
+    "train": [255, 0, 0]
+  },
+  "color_filters": {
+    "enabled": true,
+    "train": {
+      "anti_color_hsv": [90, 50, 30],
+      "anti_color_range": 30,
+      "anti_match_threshold": 0.4
+    }
+  },
   "video_optimization": {
-    "target_fps": 30,
+    "target_fps": 8,
     "max_width": 1280,
     "max_height": 540,
     "frame_skip": 1,
@@ -38,20 +50,9 @@
     "iou_threshold": 0.25
   },
   "train_number_ocr": {
-    "enabled": false,
+    "enabled": true,
     "engine": "easyocr",
-    "roi_offset": {
-      "x_offset": 0.1,
-      "y_offset": 0.05,
-      "width": 0.3,
-      "height": 0.15
-    },
-    "fixed_roi": {
-      "enabled": false,
-      "x": 0.0,
-      "y": 0.0,
-      "width": 0.2,
-      "height": 0.1
-    }
+    "frame_skip": 60,
+    "use_bottom_right_quadrant": true
   }
 }
