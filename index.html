@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Статистика по камерам и детекциям</title>
+  <link rel="stylesheet" href="./styles/style.css" />
+</head>
+<body class="page">
+  <div class="container">
+    <!-- Левая панель -->
+    <aside class="sidebar">
+      <div class="sidebar__header">
+        <h1 class="sidebar__title">Статистика</h1>
+        <div class="sidebar__select-container">
+          <label class="sidebar__label" for="enterprise-select">Предприятие</label>
+          <select id="enterprise-select" class="sidebar__select">
+            <option value="1">Завод 1</option>
+            <option value="2">Завод 2</option>
+            <option value="3">Завод 3</option>
+            <option value="4">Завод 4</option>
+          </select>
+        </div>
+      </div>
+      <div class="sidebar__videos">
+        <h2 class="sidebar__videos-title">Видео файлы</h2>
+        <ul class="sidebar__videos-list">
+          <li class="sidebar__video-item"><div class="sidebar__video-placeholder">Видео 1</div></li>
+          <li class="sidebar__video-item"><div class="sidebar__video-placeholder">Видео 2</div></li>
+          <li class="sidebar__video-item"><div class="sidebar__video-placeholder">Видео 3</div></li>
+          <li class="sidebar__video-item"><div class="sidebar__video-placeholder">Видео 4</div></li>
+          <li class="sidebar__video-item"><div class="sidebar__video-placeholder">Видео 5</div></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Правая часть -->
+    <main class="main-content">
+      <div class="main-content__header">
+        <div class="tabs">
+          <button class="tabs__button tabs__button_active" data-tab="statistics">Анализ статистики</button>
+          <button class="tabs__button" data-tab="video">Видеоряд</button>
+        </div>
+      </div>
+
+      <!-- Контент для вкладки "Анализ статистики" -->
+      <div class="tab-content tab-content_active" id="statistics-content">
+        <div class="statistics-feed">
+          <div class="grid-item iframe-full">
+            <iframe src="https://datalens.yandex/2jc7i0xllc2yn" frameborder="0"></iframe>
+          </div>
+        </div>
+      </div>
+
+      <!-- Контент для вкладки "Видеоряд" -->
+      <div class="tab-content" id="video-content">
+        <div class="video-player-container">
+          <video class="video-player" controls>
+            <source src="" type="video/mp4" />
+            Ваш браузер не поддерживает воспроизведение видео.
+          </video>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="./scripts/script.js"></script>
+</body>
+</html>
