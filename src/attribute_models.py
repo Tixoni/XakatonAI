@@ -26,8 +26,7 @@ CLOTHES_NAMES = {
     5: 'pants',
     6: 'shirt',
     7: 'shoe',
-    8: 'shorts',
-    10: 'sunglass'
+    8: 'shorts'
 }
 
 
@@ -71,7 +70,7 @@ class AttributeModels:
         
         Args:
             ppe_model_path: путь к модели PPE (ppe_best.pt)
-            clothes_model_path: путь к модели одежды (cloches_best.pt)
+            clothes_model_path: путь к модели одежды (clothes_best.pt)
             device: устройство для обработки (cpu, cuda)
             conf: порог уверенности
         """

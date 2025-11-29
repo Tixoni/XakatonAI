@@ -31,11 +31,7 @@ class PPEDetector:
         "safety_glasses": (0, 255, 0),  # Зеленый для очков (BGR)
     }
     
-<<<<<<< HEAD
     def __init__(self, model_path=None, 
-=======
-    def __init__(self, model_path="PPE_detection_using_YOLOV8-main/yolov8s_custom.pt", 
->>>>>>> ccd72d230b67a6c5fba953dc2a0748b190518a89
                  conf_threshold=0.5, device="cpu", custom_colors=None, half_precision=False):
         """
         Инициализация детектора PPE
@@ -53,14 +49,11 @@ class PPEDetector:
         self.model = None
         self.class_names = {}  # Имена классов из модели
         
-<<<<<<< HEAD
         if model_path is None:
             print("Путь к модели PPE не указан, детекция PPE будет отключена")
             self.model = None
             return
         
-=======
->>>>>>> ccd72d230b67a6c5fba953dc2a0748b190518a89
         print(f"Загрузка модели PPE: {model_path}")
         
         try:

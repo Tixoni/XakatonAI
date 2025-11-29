@@ -1,5 +1,5 @@
 {
-  "input_file": "people_and_work.mp4",
+  "input_file": "short_ppe.mp4",
   "yolo": {
     "model": "yolo11m.pt", 
     "device": "cpu"
@@ -61,7 +61,7 @@
   "attributes": {
     "enabled": true,
     "ppe_model": "ppe_best.pt",
-    "clothes_model": "cloches_best.pt",
+    "clothes_model": "clothes_best.pt",
     "device": "cpu",
     "confidence": 0.25,
     "update_interval": 10
