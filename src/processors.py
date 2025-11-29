@@ -12,6 +12,7 @@ from src.tracker import ReIDTracker
 from src.ocr_reader import TrainNumberOCR
 from src.object_manager import ObjectManager
 from src.ppe_detector import PPEDetector
+from src.attribute_models import AttributeModels, map_ppe_names, map_clothes_names
 
 
 def process_image(image_path, detector, config):
@@ -234,6 +235,38 @@ def process_video(video_path, detector, config):
             use_ppe = False
             ppe_detector = None
     
+    # Инициализация моделей атрибутов (PPE и одежда)
+    attr_cfg = config.get("attributes", {})
+    use_attributes = attr_cfg.get("enabled", False)
+    attribute_models = None
+    attr_update_interval = attr_cfg.get("update_interval", 10)
+    
+    if use_attributes:
+        print("Инициализация моделей атрибутов (PPE и одежда)...")
+        try:
+            ppe_model_path = attr_cfg.get("ppe_model")
+            clothes_model_path = attr_cfg.get("clothes_model")
+            attr_device = attr_cfg.get("device", config.get("yolo", {}).get("device", "cpu"))
+            attr_conf = attr_cfg.get("confidence", 0.25)
+            
+            attribute_models = AttributeModels(
+                ppe_model_path=ppe_model_path,
+                clothes_model_path=clothes_model_path,
+                device=attr_device,
+                conf=attr_conf
+            )
+            if attribute_models.is_enabled():
+                print("Модели атрибутов инициализированы успешно")
+            else:
+                print("Модели атрибутов не инициализированы, продолжаем без детекции атрибутов...")
+                use_attributes = False
+                attribute_models = None
+        except Exception as e:
+            print(f"Ошибка при инициализации моделей атрибутов: {e}")
+            print("Продолжаем без детекции атрибутов...")
+            use_attributes = False
+            attribute_models = None
+    
     if use_reid:
         print("Инициализация re-identification трекера...")
         try:
@@ -450,7 +483,9 @@ def process_video(video_path, detector, config):
                             track = tracker.tracks.get(track_id)
                             if track:
                                 object_manager.update_object_from_track(
-                                    track, processed_count, resized_frame
+                                    track, processed_count, resized_frame,
+                                    attribute_models=attribute_models,
+                                    attr_update_interval=attr_update_interval
                                 )
                         
                         # Удаляем неактивные объекты
@@ -632,6 +667,24 @@ def process_video(video_path, detector, config):
                         )
                         for profession, count in sorted_professions:
                             print(f"    {profession}: {count}")
+                    if type_stats.get('by_ppe'):
+                        print("  По PPE:")
+                        sorted_ppe = sorted(
+                            type_stats['by_ppe'].items(),
+                            key=lambda x: x[1],
+                            reverse=True
+                        )
+                        for ppe_item, count in sorted_ppe:
+                            print(f"    {ppe_item}: {count}")
+                    if type_stats.get('by_clothes'):
+                        print("  По одежде:")
+                        sorted_clothes = sorted(
+                            type_stats['by_clothes'].items(),
+                            key=lambda x: x[1],
+                            reverse=True
+                        )
+                        for clothes_item, count in sorted_clothes:
+                            print(f"    {clothes_item}: {count}")
                 
                 # Статистика по счетчикам состояний для каждого ID
                 print("\n=== Статистика по счетчикам состояний ===")
@@ -669,9 +722,17 @@ def process_video(video_path, detector, config):
                                 color_info_str = ", ".join(color_parts)
                         
                         profession_str = f", профессия={obj.profession}" if obj.profession else ""
+                        attrs_str = ""
+                        if obj.attributes:
+                            ppe_list = obj.attributes.get("ppe", [])
+                            clothes_list = obj.attributes.get("clothes", [])
+                            all_items = ppe_list + clothes_list
+                            if all_items:
+                                attrs_str = f", амуниция: {', '.join(all_items)}"
+                        
                         print(f"{obj.object_type.upper()}#{obj.object_id}: "
                               f"статус={obj.status.value}, кадров={obj.frame_count}, "
-                              f"цвета={color_info_str}{profession_str}")
+                              f"цвета={color_info_str}{profession_str}{attrs_str}")
                         if obj.train_number:
                             print(f"  Номер поезда: {obj.train_number}")
             else:

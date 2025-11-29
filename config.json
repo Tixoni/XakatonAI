@@ -57,5 +57,13 @@
       "gloves": [255, 0, 255],
       "safety_glasses": [0, 255, 0]
     }
+  },
+  "attributes": {
+    "enabled": true,
+    "ppe_model": "ppe_best.pt",
+    "clothes_model": "cloches_best.pt",
+    "device": "cpu",
+    "confidence": 0.25,
+    "update_interval": 10
   }
 }

@@ -54,6 +54,8 @@ class ScreenObject:
         # Профессия определяется автоматически на основе цветов
         # Для поездов: "поезд", для людей: по умолчанию "работник"
         self.profession: Optional[str] = "поезд" if object_type == "train" else "работник"
+        # Атрибуты (PPE и одежда) для людей
+        self.attributes: Dict[str, List[str]] = {"ppe": [], "clothes": []}
         self.last_update_frame = frame_num
         
         # Пороги для определения статуса
@@ -289,6 +291,7 @@ class ScreenObject:
             'go_frames': self.go_frames,
             'work_frames': self.work_frames,
             'profession': self.profession,
+            'attributes': self.attributes,
             'dominant_colors': self.dominant_colors,
             'train_number': self.train_number,
             'first_seen_frame': self.frame_num,

@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
 from src.screen_object import ScreenObject, ObjectStatus
 from src.tracker import ReIDTracker, Track
+from src.image_utils import extract_roi
 import numpy as np
 
 
@@ -71,7 +72,8 @@ class ObjectManager:
         
         return screen_object
     
-    def update_object_from_track(self, track: Track, frame_num: int, frame: np.ndarray) -> Optional[ScreenObject]:
+    def update_object_from_track(self, track: Track, frame_num: int, frame: np.ndarray,
+                                 attribute_models=None, attr_update_interval=10) -> Optional[ScreenObject]:
         """
         Обновляет существующий объект из трека или создает новый
         
@@ -79,6 +81,8 @@ class ObjectManager:
             track: трек объекта
             frame_num: номер кадра
             frame: кадр изображения для обновления цветов
+            attribute_models: модели для детекции атрибутов (PPE и одежда)
+            attr_update_interval: интервал обновления атрибутов (в кадрах)
             
         Returns:
             обновленный или созданный ScreenObject
@@ -102,6 +106,29 @@ class ObjectManager:
                     # Используем компенсацию освещения для лучшего определения цветов
                     lighting_compensation = {"enabled": True, "normalize_brightness": False, "wider_color_ranges": True}
                     screen_object.update_colors(frame, top_n=4, lighting_compensation=lighting_compensation)
+                
+                # Обновляем атрибуты (PPE и одежда) для людей
+                if attribute_models and attribute_models.is_enabled() and object_type == "person":
+                    # Обновляем атрибуты периодически
+                    if frame_num % attr_update_interval == 0:
+                        x1, y1, x2, y2 = track.bbox
+                        person_crop = extract_roi(frame, x1, y1, x2, y2, crop_border_ratio=0.0)
+                        if person_crop is not None and person_crop.size > 0:
+                            try:
+                                from src.attribute_models import map_ppe_names, map_clothes_names
+                                ppe = attribute_models.run_ppe(person_crop)
+                                clothes = attribute_models.run_clothes(person_crop)
+                                ppe_names = map_ppe_names(ppe)
+                                clothes_names = map_clothes_names(clothes)
+                                # Объединяем с существующими атрибутами (уникальные значения)
+                                existing_ppe = screen_object.attributes.get("ppe", [])
+                                existing_clothes = screen_object.attributes.get("clothes", [])
+                                screen_object.attributes = {
+                                    "ppe": sorted(set(existing_ppe + ppe_names)),
+                                    "clothes": sorted(set(existing_clothes + clothes_names))
+                                }
+                            except Exception as e:
+                                pass  # Игнорируем ошибки при обновлении атрибутов
                 
                 # Обновляем статус (передаем ширину кадра для определения WORK)
                 frame_height, frame_width = frame.shape[:2]
@@ -199,7 +226,9 @@ class ObjectManager:
                 'total': len(valid_objects),
                 'by_status': {},
                 'by_colors': {},  # Статистика по цветам
-                'by_profession': {}  # Статистика по профессиям
+                'by_profession': {},  # Статистика по профессиям
+                'by_ppe': {},  # Статистика по PPE
+                'by_clothes': {}  # Статистика по одежде
             }
             
             # Подсчет по статусам, цветам и профессиям
@@ -231,6 +260,23 @@ class ObjectManager:
                     if profession not in stats[object_type]['by_profession']:
                         stats[object_type]['by_profession'][profession] = 0
                     stats[object_type]['by_profession'][profession] += 1
+                
+                # Атрибуты (PPE и одежда) - только для людей
+                if obj.attributes and object_type == "person":
+                    ppe_list = obj.attributes.get("ppe", [])
+                    clothes_list = obj.attributes.get("clothes", [])
+                    
+                    # Статистика по PPE
+                    for ppe_item in ppe_list:
+                        if ppe_item not in stats[object_type]['by_ppe']:
+                            stats[object_type]['by_ppe'][ppe_item] = 0
+                        stats[object_type]['by_ppe'][ppe_item] += 1
+                    
+                    # Статистика по одежде
+                    for clothes_item in clothes_list:
+                        if clothes_item not in stats[object_type]['by_clothes']:
+                            stats[object_type]['by_clothes'][clothes_item] = 0
+                        stats[object_type]['by_clothes'][clothes_item] += 1
         
         return stats
 
