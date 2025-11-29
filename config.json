@@ -1,5 +1,5 @@
 {
-  "input_file": "short_vid.mp4",
+  "input_file": "people_and_work.mp4",
   "yolo": {
     "model": "yolo11m.pt", 
     "device": "cpu"
@@ -12,20 +12,8 @@
       "6": "train"
     }
   },
-  "colors": {
-    "person": [0, 255, 0],
-    "train": [255, 0, 0]
-  },
-  "color_filters": {
-    "enabled": true,
-    "train": {
-      "anti_color_hsv": [90, 50, 30],
-      "anti_color_range": 30,
-      "anti_match_threshold": 0.4
-    }
-  },
   "video_optimization": {
-    "target_fps": 8,
+    "target_fps": 20,
     "max_width": 1280,
     "max_height": 540,
     "frame_skip": 1,
@@ -45,14 +33,37 @@
   "re_identification": {
     "enabled": true,
     "max_distance": 0.5,
-    "max_age": 10,
-    "min_hits": 8,
-    "iou_threshold": 0.25
+    "max_age": 150,
+    "min_hits": 10,
+    "iou_threshold": 0.2,
+    "use_objects": true
   },
   "train_number_ocr": {
     "enabled": true,
     "engine": "easyocr",
-    "frame_skip": 60,
-    "use_bottom_right_quadrant": true
+    "frame_skip": 10,
+    "use_bottom_right_quadrant": true,
+    "allowed_chars": "0123456789ЭП",
+    "expected_length": 7
+  },
+  "ppe_detection": {
+    "enabled": true,
+    "model_path": "PPE_detection_using_YOLOV8-main/yolov8s_custom.pt",
+    "confidence_threshold": 0.5,
+    "target_classes": null,
+    "colors": {
+      "helmet": [190, 100, 255],
+      "safety_vest": [255, 165, 0],
+      "gloves": [255, 0, 255],
+      "safety_glasses": [0, 255, 0]
+    }
+  },
+  "attributes": {
+    "enabled": true,
+    "ppe_model": "ppe_best.pt",
+    "clothes_model": "clothes_best.pt",
+    "device": "cpu",
+    "confidence": 0.45,
+    "update_interval": 5
   }
 }

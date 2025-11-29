@@ -7,20 +7,52 @@ import numpy as np
 from typing import Optional, Tuple, Dict
 import re
 
+# Замена похожих символов, которые OCR часто путает
+CHAR_REPLACEMENTS = {
+    # Латинские буквы, похожие на цифры
+    'O': '0',  # Латинская O -> 0
+    'o': '0',  # Строчная o -> 0
+    'I': '1',  # I -> 1
+    'l': '1',  # l -> 1
+    '|': '1',  # | -> 1
+    'S': '5',  # S -> 5
+    's': '5',
+    'D': '0',  # D -> 0 (иногда)
+    'd': '0',
+    'G': '6',  # G -> 6 (иногда)
+    'g': '6',
+    'Q': '0',  # Q -> 0
+    'q': '0',
+    # Кириллические буквы, похожие на цифры
+    'О': '0',  # Кириллическая О -> 0
+    'о': '0',  # Строчная о -> 0
+    'З': '3',  # З -> 3
+    'з': '3',
+    'Б': '6',  # Б -> 6
+    'б': '6',
+    'В': '8',  # В -> 8 (иногда)
+    'в': '8',
+}
+
 
 class TrainNumberOCR:
     """Класс для распознавания номеров поездов"""
     
-    def __init__(self, ocr_engine="easyocr", languages=['en', 'ru']):
+    def __init__(self, ocr_engine="easyocr", languages=['en', 'ru'], 
+                 allowed_chars="0123456789ЭП", expected_length=7):
         """
         Инициализация OCR
         
         Args:
             ocr_engine: движок OCR ('easyocr' или 'tesseract')
             languages: языки для распознавания
+            allowed_chars: строка допустимых символов для номера поезда
+            expected_length: ожидаемая длина номера поезда
         """
         self.ocr_engine = ocr_engine
         self.languages = languages
+        self.allowed_chars = set(allowed_chars)
+        self.expected_length = expected_length
         self.reader = None
         
         if ocr_engine == "easyocr":
@@ -90,6 +122,47 @@ class TrainNumberOCR:
         
         return resized
     
+    def filter_train_number(self, text: str) -> Optional[str]:
+        """
+        Фильтрует текст, оставляя только допустимые символы для номера поезда.
+        Также заменяет похожие символы, которые OCR часто путает.
+        
+        Args:
+            text: исходный текст
+            
+        Returns:
+            отфильтрованный текст или None, если не осталось допустимых символов
+        """
+        if not text:
+            return None
+        
+        # Сначала заменяем похожие символы
+        replaced = ''
+        for c in text:
+            if c in CHAR_REPLACEMENTS:
+                replaced += CHAR_REPLACEMENTS[c]
+            else:
+                replaced += c
+        
+        # Затем оставляем только допустимые символы (из конфига)
+        filtered = ''.join(c for c in replaced if c in self.allowed_chars)
+        
+        # Убираем пробелы и проверяем, что осталось что-то
+        filtered = filtered.strip()
+        
+        if filtered and len(filtered) > 0:
+            # Если длина соответствует ожидаемой, возвращаем как есть
+            if len(filtered) == self.expected_length:
+                return filtered
+            # Если длина больше ожидаемой, берем первые expected_length символов
+            elif len(filtered) > self.expected_length:
+                return filtered[:self.expected_length]
+            # Если длина меньше, но есть символы, возвращаем (может быть неполный номер)
+            else:
+                return filtered
+        
+        return None
+    
     def recognize_text_easyocr(self, roi: np.ndarray) -> Optional[str]:
         """Распознавание текста с помощью EasyOCR"""
         if self.reader is None:
@@ -109,32 +182,37 @@ class TrainNumberOCR:
             if not results:
                 return None
             
-            # Объединяем все найденные тексты, сортируем по уверенности
-            texts_with_conf = []
+            # Собираем все распознанные тексты с их позициями
+            texts_with_pos = []
             for (bbox, text, confidence) in results:
                 if confidence > 0.2:  # Снижаем порог для лучшего распознавания
-                    texts_with_conf.append((text.strip(), confidence))
+                    # Вычисляем минимальную x координату (левый край) для сортировки слева направо
+                    # bbox - это numpy array формы (4, 2) с точками [x, y]
+                    if isinstance(bbox, np.ndarray):
+                        x_min = float(np.min(bbox[:, 0]))  # Минимальная x координата
+                    else:
+                        # Если это список, берем минимальную x из всех точек
+                        x_min = min(point[0] for point in bbox)
+                    texts_with_pos.append((x_min, text.strip(), confidence))
             
-            if texts_with_conf:
-                # Сортируем по уверенности (от большей к меньшей)
-                texts_with_conf.sort(key=lambda x: x[1], reverse=True)
+            if texts_with_pos:
+                # Сортируем по позиции (x координате) слева направо для правильного порядка
+                texts_with_pos.sort(key=lambda x: x[0])
                 
-                # Берем текст с наибольшей уверенностью или объединяем несколько
-                if len(texts_with_conf) == 1:
-                    combined_text = texts_with_conf[0][0]
-                else:
-                    # Объединяем несколько результатов
-                    combined_text = " ".join([t[0] for t in texts_with_conf[:3]])  # Берем до 3 лучших
+                # Объединяем тексты в правильном порядке
+                combined_text = ''.join([t[1] for t in texts_with_pos])
                 
                 # Очищаем текст, но сохраняем пробелы и кириллицу
                 # Убираем только специальные символы, оставляем буквы, цифры и пробелы
                 cleaned = re.sub(r'[^\w\sА-Яа-яЁё]', '', combined_text)
-                cleaned = re.sub(r'\s+', ' ', cleaned)  # Убираем множественные пробелы
+                cleaned = re.sub(r'\s+', '', cleaned)  # Убираем все пробелы
                 result = cleaned.strip()
                 
-                # Проверяем, что результат не пустой и содержит хотя бы одну букву или цифру
-                if result and (re.search(r'[А-Яа-яЁёA-Za-z]', result) or re.search(r'\d', result)):
-                    return result
+                # Фильтруем только допустимые символы для номера поезда
+                filtered_result = self.filter_train_number(result)
+                
+                if filtered_result:
+                    return filtered_result
             
             return None
         except Exception as e:
@@ -150,16 +228,19 @@ class TrainNumberOCR:
             # Предобработка
             processed = self.preprocess_image(roi)
             
-            # Конфигурация для распознавания цифр и букв
-            config = r'--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
+            # Конфигурация для распознавания цифр и букв (используем допустимые символы из конфига)
+            allowed_chars_str = ''.join(sorted(self.allowed_chars))
+            config = f'--oem 3 --psm 7 -c tessedit_char_whitelist={allowed_chars_str}'
             
             # Распознавание
             text = self.reader.image_to_string(processed, config=config, lang='eng+rus')
             
             if text:
-                # Очищаем текст
-                cleaned = re.sub(r'[^\w\s]', '', text)
-                return cleaned.strip()
+                # Фильтруем только допустимые символы для номера поезда
+                filtered_result = self.filter_train_number(text)
+                
+                if filtered_result:
+                    return filtered_result
             
             return None
         except Exception as e:
@@ -266,7 +347,6 @@ class TrainNumberOCR:
         (устаревший метод, используйте recognize_from_right_half)
         """
         return self.recognize_from_right_half(frame)
-    
     def recognize_from_train_bbox(self, frame: np.ndarray, 
                                  bbox: Tuple[int, int, int, int],
                                  roi_offset: Dict = None) -> Optional[str]:
