@@ -103,8 +103,9 @@ class ObjectManager:
                     lighting_compensation = {"enabled": True, "normalize_brightness": False, "wider_color_ranges": True}
                     screen_object.update_colors(frame, top_n=4, lighting_compensation=lighting_compensation)
                 
-                # Обновляем статус
-                screen_object.update_status()
+                # Обновляем статус (передаем ширину кадра для определения WORK)
+                frame_height, frame_width = frame.shape[:2]
+                screen_object.update_status(frame_width=frame_width)
                 
                 # Обновляем номер поезда, если есть
                 if hasattr(track, 'train_number') and track.train_number:
@@ -179,23 +180,30 @@ class ObjectManager:
                         del self.objects_by_type[object_type][object_id]
                         del self.track_to_object[track_id]
     
-    def get_statistics(self) -> Dict:
+    def get_statistics(self, min_frames: int = 20) -> Dict:
         """
         Получает статистику по объектам
+        
+        Args:
+            min_frames: минимальное количество кадров для учета объекта в статистике
         
         Returns:
             словарь со статистикой
         """
         stats = {}
         for object_type, objects_dict in self.objects_by_type.items():
+            # Фильтруем объекты по минимальному количеству кадров
+            valid_objects = [obj for obj in objects_dict.values() if obj.frame_count >= min_frames]
+            
             stats[object_type] = {
-                'total': len(objects_dict),
+                'total': len(valid_objects),
                 'by_status': {},
-                'by_colors': {}  # Статистика по цветам
+                'by_colors': {},  # Статистика по цветам
+                'by_profession': {}  # Статистика по профессиям
             }
             
-            # Подсчет по статусам и цветам
-            for obj in objects_dict.values():
+            # Подсчет по статусам, цветам и профессиям
+            for obj in valid_objects:
                 # Статусы
                 status = obj.status.value
                 if status not in stats[object_type]['by_status']:
@@ -216,6 +224,13 @@ class ObjectManager:
                     if 'unknown' not in stats[object_type]['by_colors']:
                         stats[object_type]['by_colors']['unknown'] = 0
                     stats[object_type]['by_colors']['unknown'] += 1
+                
+                # Профессии (только для людей)
+                if obj.profession:
+                    profession = obj.profession
+                    if profession not in stats[object_type]['by_profession']:
+                        stats[object_type]['by_profession'][profession] = 0
+                    stats[object_type]['by_profession'][profession] += 1
         
         return stats
 

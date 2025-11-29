@@ -213,6 +213,11 @@ class YOLODetector:
         """
         result_frame = frame.copy()
         
+        # Рисуем вертикальную линию посередине экрана (для определения WORK)
+        h, w = frame.shape[:2]
+        middle_x = w // 2
+        cv2.line(result_frame, (middle_x, 0), (middle_x, h), (255, 255, 0), 2)  # Желтая линия
+        
         for obj_info in objects_info:
             track_id = obj_info.get('track_id')
             object_id = obj_info.get('object_id')
@@ -232,7 +237,7 @@ class YOLODetector:
             # Рисуем прямоугольник
             cv2.rectangle(result_frame, (x1, y1), (x2, y2), color, 2)
             
-            # Формируем подпись: только тип, ID и статус
+            # Формируем подпись: только тип, ID и статус (без профессии)
             label_parts = [f"{object_type.upper()}#{object_id}"]
             
             # Добавляем статус

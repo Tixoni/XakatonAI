@@ -11,6 +11,7 @@ from src.reid import FeatureExtractor
 from src.tracker import ReIDTracker
 from src.ocr_reader import TrainNumberOCR
 from src.object_manager import ObjectManager
+from src.ppe_detector import PPEDetector
 
 
 def process_image(image_path, detector, config):
@@ -71,6 +72,31 @@ def process_image(image_path, detector, config):
         print(f"  - {class_name}: {confidence:.2f}")
     
     result_image = detector.draw_detections(image, detections)
+    
+    # Детекция PPE для изображений
+    ppe_cfg = config.get("ppe_detection", {})
+    use_ppe = ppe_cfg.get("enabled", False)
+    if use_ppe:
+        try:
+            ppe_model_path = ppe_cfg.get("model_path", "PPE_detection_using_YOLOV8-main/yolov8s_custom.pt")
+            ppe_conf_threshold = ppe_cfg.get("confidence_threshold", 0.5)
+            ppe_detector = PPEDetector(
+                model_path=ppe_model_path,
+                conf_threshold=ppe_conf_threshold,
+                device=config.get("yolo", {}).get("device", "cpu"),
+                custom_colors=ppe_cfg.get("colors", {}),
+                half_precision=config.get("processing", {}).get("half_precision", False)
+            )
+            if ppe_detector.is_enabled():
+                ppe_target_classes = ppe_cfg.get("target_classes", None)
+                ppe_detections = ppe_detector.detect(image, target_classes=ppe_target_classes)
+                if ppe_detections:
+                    print(f"Найдено PPE: {len(ppe_detections)}")
+                    for class_name, confidence, x1, y1, x2, y2 in ppe_detections:
+                        print(f"  - {class_name}: {confidence:.2f}")
+                    result_image = ppe_detector.draw_detections(result_image, ppe_detections)
+        except Exception as e:
+            print(f"Ошибка при детекции PPE: {e}")
     
     if debug_cfg.get("show_filtered_objects") and rejected:
         result_image = annotate_rejected(result_image, rejected, detector)
@@ -164,6 +190,7 @@ def process_video(video_path, detector, config):
     rejected_total = 0
     writer = None
     output_path = None
+    ppe_total_count = {}  # Общий счетчик детекций PPE по классам
     
     # Инициализация re-identification трекера
     reid_cfg = config.get("re_identification", {})
@@ -178,6 +205,34 @@ def process_video(video_path, detector, config):
     if use_objects:
         object_manager = ObjectManager(class_names=detector.CLASSES)
         print("Менеджер объектов инициализирован")
+    
+    # Инициализация детектора PPE
+    ppe_cfg = config.get("ppe_detection", {})
+    use_ppe = ppe_cfg.get("enabled", False)
+    ppe_detector = None
+    if use_ppe:
+        print("Инициализация детектора PPE...")
+        try:
+            ppe_model_path = ppe_cfg.get("model_path", "PPE_detection_using_YOLOV8-main/yolov8s_custom.pt")
+            ppe_conf_threshold = ppe_cfg.get("confidence_threshold", 0.5)
+            ppe_detector = PPEDetector(
+                model_path=ppe_model_path,
+                conf_threshold=ppe_conf_threshold,
+                device=config.get("yolo", {}).get("device", "cpu"),
+                custom_colors=ppe_cfg.get("colors", {}),
+                half_precision=config.get("processing", {}).get("half_precision", False)
+            )
+            if ppe_detector.is_enabled():
+                print("Детектор PPE инициализирован успешно")
+            else:
+                print("Детектор PPE не инициализирован, продолжаем без детекции PPE...")
+                use_ppe = False
+                ppe_detector = None
+        except Exception as e:
+            print(f"Ошибка при инициализации детектора PPE: {e}")
+            print("Продолжаем без детекции PPE...")
+            use_ppe = False
+            ppe_detector = None
     
     if use_reid:
         print("Инициализация re-identification трекера...")
@@ -228,7 +283,6 @@ def process_video(video_path, detector, config):
             print("Продолжаем без распознавания номеров...")
             use_ocr = False
             ocr_reader = None
-    
 
     frame_count = 0
     processed_count = 0
@@ -260,11 +314,20 @@ def process_video(video_path, detector, config):
             else:
                 resized_frame = frame
             
-            # Детекция
+            # Детекция основных объектов (люди, поезда)
             detections = detector.detect(resized_frame, target_classes=target_classes)
             detections, rejected = apply_color_filters(resized_frame, detections, color_filters, detector.CLASSES, debug_cfg)
             rejected_total += len(rejected)
             
+            # Детекция PPE (каски, амуниция)
+            ppe_detections = []
+            if use_ppe and ppe_detector is not None:
+                try:
+                    ppe_target_classes = ppe_cfg.get("target_classes", None)  # None = все классы PPE
+                    ppe_detections = ppe_detector.detect(resized_frame, target_classes=ppe_target_classes)
+                except Exception as e:
+                    if debug_cfg.get("log_detection_details"):
+                        print(f"Ошибка при детекции PPE: {e}")
 
             # Re-identification трекинг
             tracks = None
@@ -410,6 +473,7 @@ def process_video(video_path, detector, config):
                                         'class_id': screen_object.class_id,
                                         'bbox': (x1, y1, x2, y2),
                                         'status': screen_object.status.value,
+                                        'profession': screen_object.profession,
                                         'train_number': screen_object.train_number,
                                         'frame_count': screen_object.frame_count
                                     })
@@ -436,8 +500,24 @@ def process_video(video_path, detector, config):
                 # Отрисовка без ID
                 result_frame = detector.draw_detections(resized_frame, detections, show_track_ids=False)
             
+            # Отрисовка детекций PPE поверх основного результата
+            if use_ppe and ppe_detector is not None and ppe_detections:
+                result_frame = ppe_detector.draw_detections(result_frame, ppe_detections)
+            
             if debug_cfg.get("show_filtered_objects") and rejected:
                 result_frame = annotate_rejected(result_frame, rejected, detector, color=(0, 0, 255))
+            
+            # Подсчет детекций PPE для статистики
+            ppe_count_by_class = {}
+            if use_ppe and ppe_detections:
+                for class_name, _, _, _, _, _ in ppe_detections:
+                    if class_name not in ppe_count_by_class:
+                        ppe_count_by_class[class_name] = 0
+                    ppe_count_by_class[class_name] += 1
+                    # Обновляем общий счетчик
+                    if class_name not in ppe_total_count:
+                        ppe_total_count[class_name] = 0
+                    ppe_total_count[class_name] += 1
             
             # Информация на кадре
             if use_reid and tracker is not None and tracks:
@@ -451,6 +531,11 @@ def process_video(video_path, detector, config):
                     
                     counts_text = " | ".join(counts_parts)
                     info_text = f"Кадр: {processed_count} | Объектов: {len(tracks)}" + (f" | {counts_text}" if counts_text else "")
+                    
+                    # Добавляем информацию о PPE
+                    if ppe_count_by_class:
+                        ppe_parts = [f"{name}:{count}" for name, count in ppe_count_by_class.items()]
+                        info_text += " | PPE: " + ", ".join(ppe_parts)
                 else:
                     # Подсчет уникальных треков (старый подход)
                     unique_tracks_by_class = {}
@@ -470,9 +555,15 @@ def process_video(video_path, detector, config):
                     for cid in detections_count
                 )
                 info_text = f"Кадр: {processed_count}" + (f" | {counts_text}" if counts_text else "")
+                
+                # Добавляем информацию о PPE
+                if ppe_count_by_class:
+                    ppe_parts = [f"{name}:{count}" for name, count in ppe_count_by_class.items()]
+                    info_text += " | PPE: " + ", ".join(ppe_parts)
 
-            cv2.putText(result_frame, info_text, (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            # Убрана отрисовка информации на кадре (желтый текст)
+            # cv2.putText(result_frame, info_text, (10, 30),
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             
             # Сохранение результата
             if save_results:
@@ -531,11 +622,39 @@ def process_video(video_path, detector, config):
                         )
                         for color, count in sorted_colors:
                             print(f"    {color}: {count}")
+                    if type_stats.get('by_profession'):
+                        print("  По профессиям:")
+                        # Сортируем профессии по количеству (от большего к меньшему)
+                        sorted_professions = sorted(
+                            type_stats['by_profession'].items(), 
+                            key=lambda x: x[1], 
+                            reverse=True
+                        )
+                        for profession, count in sorted_professions:
+                            print(f"    {profession}: {count}")
+                
+                # Статистика по счетчикам состояний для каждого ID
+                print("\n=== Статистика по счетчикам состояний ===")
+                all_objects = object_manager.get_all_objects()
+                # Фильтруем объекты с менее 20 кадрами
+                min_frames_threshold = 20
+                valid_objects = [obj for obj in all_objects if obj.frame_count >= min_frames_threshold]
+                
+                if not valid_objects:
+                    print("Нет объектов, находящихся в кадре >= 20 кадров")
+                else:
+                    # Сортируем по типу и ID
+                    valid_objects.sort(key=lambda x: (x.object_type, x.object_id))
+                    
+                    for obj in valid_objects:
+                        print(f"{obj.object_type.upper()}#{obj.object_id}: "
+                              f"STAY={obj.stay_frames}, GO={obj.go_frames}, WORK={obj.work_frames}")
                 
                 # Детальная информация по объектам
                 if debug_cfg.get("log_detection_details"):
                     print("\n=== Детальная информация об объектах ===")
-                    for obj in object_manager.get_all_objects():
+                    # Используем отфильтрованные объекты (>= 20 кадров)
+                    for obj in valid_objects:
                         info = obj.get_info_dict()
                         color_info_str = "unknown"
                         if obj.color_info and obj.color_info.get('top_colors'):
@@ -549,9 +668,10 @@ def process_video(video_path, detector, config):
                                     color_parts.append(f"{name}({pct:.1%})")
                                 color_info_str = ", ".join(color_parts)
                         
+                        profession_str = f", профессия={obj.profession}" if obj.profession else ""
                         print(f"{obj.object_type.upper()}#{obj.object_id}: "
                               f"статус={obj.status.value}, кадров={obj.frame_count}, "
-                              f"цвета={color_info_str}")
+                              f"цвета={color_info_str}{profession_str}")
                         if obj.train_number:
                             print(f"  Номер поезда: {obj.train_number}")
             else:
@@ -569,6 +689,15 @@ def process_video(video_path, detector, config):
         
         if rejected_total:
             print(f"Отклонено цветовым фильтром: {rejected_total}")
+        
+        # Статистика по PPE
+        if use_ppe and ppe_total_count:
+            print("\n=== Статистика PPE ===")
+            for ppe_class, count in sorted(ppe_total_count.items(), key=lambda x: x[1], reverse=True):
+                print(f"  {ppe_class}: {count} детекций")
+        
+        # Вывод текущего времени
+        
         if save_results and output_path:
             print(f"Видео сохранено: {output_path}")
 

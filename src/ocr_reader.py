@@ -347,7 +347,6 @@ class TrainNumberOCR:
         (устаревший метод, используйте recognize_from_right_half)
         """
         return self.recognize_from_right_half(frame)
-    
     def recognize_from_train_bbox(self, frame: np.ndarray, 
                                  bbox: Tuple[int, int, int, int],
                                  roi_offset: Dict = None) -> Optional[str]:

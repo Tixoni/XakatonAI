@@ -44,8 +44,16 @@ class ScreenObject:
         # Статус объекта
         self.status = ObjectStatus.UNKNOWN
         
+        # Счетчики кадров по состояниям
+        self.stay_frames = 0   # Количество кадров в состоянии STAY
+        self.go_frames = 0      # Количество кадров в состоянии GO
+        self.work_frames = 0   # Количество кадров в состоянии WORK
+        
         # Дополнительная информация
         self.train_number: Optional[str] = None  # Номер поезда (для train)
+        # Профессия определяется автоматически на основе цветов
+        # Для поездов: "поезд", для людей: по умолчанию "работник"
+        self.profession: Optional[str] = "поезд" if object_type == "train" else "работник"
         self.last_update_frame = frame_num
         
         # Пороги для определения статуса
@@ -122,19 +130,97 @@ class ScreenObject:
                     self.dominant_colors = [tuple(map(int, avg_color))]
                 else:
                     self.dominant_colors = [tuple(avg_bgr)]
+            
+            # Определяем профессию на основе цветов
+            self._determine_profession()
         except Exception as e:
             # Fallback на простой метод при ошибке
             avg_color = np.mean(roi.reshape(-1, 3), axis=0)
             self.dominant_colors = [tuple(map(int, avg_color))]
             self.color_info = None
     
-    def update_status(self):
+    def _determine_profession(self):
         """
-        Обновляет статус объекта на основе истории перемещений
+        Определяет профессию объекта на основе цветов одежды
+        Правила:
+        - Для поездов: профессия всегда "поезд"
+        - Белый или серый >20% -> рабочий (приоритет выше красного)
+        - Красный цвет -> инженер
+        - Остальные -> главный инженер
         """
-        if len(self.position_history) < 2:
-            self.status = ObjectStatus.UNKNOWN
+        # Для поездов профессия всегда "поезд"
+        if self.object_type == "train":
+            self.profession = "поезд"
             return
+        
+        if not self.color_info:
+            self.profession = "работник"  # По умолчанию
+            return
+        
+        all_percentages = self.color_info.get("all_percentages", {})
+        top_colors = self.color_info.get("top_colors", [])
+        
+        # СНАЧАЛА проверяем белый и серый цвета (>20%) - приоритет выше красного
+        white_percentage = all_percentages.get("white", 0.0)
+        gray_percentage = all_percentages.get("gray", 0.0)
+        light_gray_percentage = all_percentages.get("light_gray", 0.0)
+        dark_gray_percentage = all_percentages.get("dark_gray", 0.0)
+        
+        total_gray_white = white_percentage + gray_percentage + light_gray_percentage + dark_gray_percentage
+        
+        if total_gray_white > 0.2:  # 20%
+            self.profession = "рабочий"
+            return
+        
+        # Затем проверяем наличие красного цвета
+        red_percentage = all_percentages.get("red", 0.0)
+        # Также проверяем в top_colors
+        for color_item in top_colors:
+            if color_item.get("name") == "red":
+                red_percentage = max(red_percentage, color_item.get("percentage", 0.0))
+        
+        if red_percentage > 0.0:
+            self.profession = "инженер"
+            return
+        
+        # Остальные случаи
+        self.profession = "работник"
+    
+    def update_status(self, frame_width: Optional[int] = None):
+        """
+        Обновляет статус объекта на основе истории перемещений и положения на экране
+        
+        Args:
+            frame_width: ширина кадра для определения середины экрана (для статуса WORK)
+        """
+        # Получаем текущую позицию
+        curr_x1, curr_y1, curr_x2, curr_y2 = self.bbox
+        curr_center_x = (curr_x1 + curr_x2) / 2
+        
+        # Проверяем положение относительно середины экрана (для статуса WORK)
+        is_on_right_side = False
+        if frame_width is not None:
+            screen_middle = frame_width / 2
+            is_on_right_side = curr_center_x > screen_middle
+        
+        # Если только одна позиция в истории, определяем статус только по положению
+        if len(self.position_history) < 2:
+            if is_on_right_side:
+                self.status = ObjectStatus.WORK
+                self.work_frames += 1
+            else:
+                self.status = ObjectStatus.UNKNOWN
+            return
+        
+        # Получаем текущую позицию
+        curr_x1, curr_y1, curr_x2, curr_y2 = self.bbox
+        curr_center_x = (curr_x1 + curr_x2) / 2
+        
+        # Проверяем положение относительно середины экрана (для статуса WORK)
+        is_on_right_side = False
+        if frame_width is not None:
+            screen_middle = frame_width / 2
+            is_on_right_side = curr_center_x > screen_middle
         
         # Вычисляем среднее перемещение за последние кадры
         movements = []
@@ -161,20 +247,28 @@ class ScreenObject:
         
         avg_movement = np.mean(movements)
         
+        # Сохраняем предыдущий статус для обновления счетчиков
+        prev_status = self.status
+        
         # Определяем статус
-        if avg_movement < self.stay_threshold:
+        # WORK определяется по положению справа от середины экрана
+        if is_on_right_side:
+            self.status = ObjectStatus.WORK
+        elif avg_movement < self.stay_threshold:
             self.status = ObjectStatus.STAY
         elif avg_movement >= self.movement_threshold:
-            if self.object_type == 'train':
-                self.status = ObjectStatus.WORK  # Поезд в движении = работает
-            else:
-                self.status = ObjectStatus.GO
+            self.status = ObjectStatus.GO
         else:
-            # Среднее перемещение - может быть медленное движение
-            if self.object_type == 'train':
-                self.status = ObjectStatus.WORK
-            else:
-                self.status = ObjectStatus.GO
+            # Среднее перемещение - медленное движение
+            self.status = ObjectStatus.GO
+        
+        # Обновляем счетчики кадров (увеличиваем каждый кадр)
+        if self.status == ObjectStatus.STAY:
+            self.stay_frames += 1
+        elif self.status == ObjectStatus.GO:
+            self.go_frames += 1
+        elif self.status == ObjectStatus.WORK:
+            self.work_frames += 1
     
     def get_info_dict(self) -> Dict:
         """
@@ -191,6 +285,10 @@ class ScreenObject:
             'confidence': self.confidence,
             'frame_count': self.frame_count,
             'status': self.status.value,
+            'stay_frames': self.stay_frames,
+            'go_frames': self.go_frames,
+            'work_frames': self.work_frames,
+            'profession': self.profession,
             'dominant_colors': self.dominant_colors,
             'train_number': self.train_number,
             'first_seen_frame': self.frame_num,

@@ -186,6 +186,42 @@ def apply_color_filters(frame, detections, filters_cfg, class_map, debug_cfg=Non
                 info["red_percentage"] = red_percentage
                 info["min_red_threshold"] = min_red_threshold
         
+        # Фильтр для поездов: требуется красный цвет >= 20% и синий цвет <= 5%
+        if passed and class_name == "train":
+            # Используем настройки lighting_compensation для лучшего определения цветов
+            lighting_compensation = None
+            if debug_cfg:
+                lighting_compensation = {"enabled": True, "normalize_brightness": False, "wider_color_ranges": True}
+            
+            color_info = detect_dominant_color(roi, top_n=5, lighting_compensation=lighting_compensation)
+            all_percentages = color_info.get("all_percentages", {})
+            top_colors = color_info.get("top_colors", [])
+            
+            # Проверяем процент красного цвета (должен быть >= 20%)
+            red_percentage = all_percentages.get("red", 0.0)
+            # Также проверяем в top_colors
+            for color_item in top_colors:
+                if color_item.get("name") == "red":
+                    red_percentage = max(red_percentage, color_item.get("percentage", 0.0))
+            
+            min_red_threshold = 0.2  # 20%
+            if red_percentage < min_red_threshold:
+                passed = False
+                info["reason"] = "insufficient_red_color"
+                info["red_percentage"] = red_percentage
+                info["min_red_threshold"] = min_red_threshold
+            
+            # Проверяем процент синего цвета (должен быть <= 5%)
+            if passed:
+                blue_percentage = all_percentages.get("blue", 0.0)
+                max_blue_threshold = 0.05  # 5%
+                
+                if blue_percentage > max_blue_threshold:
+                    passed = False
+                    info["reason"] = "too_much_blue"
+                    info["blue_percentage"] = blue_percentage
+                    info["max_blue_threshold"] = max_blue_threshold
+        
         if log_details:
             reason = info.get("reason", "pass")
             match_ratio = info.get("match_ratio")

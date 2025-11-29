@@ -1,5 +1,5 @@
 {
-  "input_file": "people_and_work.mp4",
+  "input_file": "short_ppe.mp4",
   "yolo": {
     "model": "yolo11m.pt", 
     "device": "cpu"
@@ -45,5 +45,17 @@
     "use_bottom_right_quadrant": true,
     "allowed_chars": "0123456789ЭП",
     "expected_length": 7
+  },
+  "ppe_detection": {
+    "enabled": true,
+    "model_path": "PPE_detection_using_YOLOV8-main/yolov8s_custom.pt",
+    "confidence_threshold": 0.5,
+    "target_classes": null,
+    "colors": {
+      "helmet": [190, 100, 255],
+      "safety_vest": [255, 165, 0],
+      "gloves": [255, 0, 255],
+      "safety_glasses": [0, 255, 0]
+    }
   }
 }
