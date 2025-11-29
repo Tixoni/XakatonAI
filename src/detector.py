@@ -199,3 +199,64 @@ class YOLODetector:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
         
         return result_frame
+    
+    def draw_objects(self, frame, objects_info):
+        """
+        Отрисовка объектов на кадре с полной информацией
+        
+        Args:
+            frame: кадр для отрисовки
+            objects_info: список словарей с информацией об объектах
+                [{'track_id': int, 'object_id': int, 'object_type': str, 
+                  'bbox': (x1, y1, x2, y2), 'status': str, 
+                  'train_number': str, 'frame_count': int}, ...]
+        """
+        result_frame = frame.copy()
+        
+        for obj_info in objects_info:
+            track_id = obj_info.get('track_id')
+            object_id = obj_info.get('object_id')
+            object_type = obj_info.get('object_type', 'unknown')
+            class_id = obj_info.get('class_id', 0)
+            bbox = obj_info.get('bbox')
+            status = obj_info.get('status', 'unknown')
+            train_number = obj_info.get('train_number')
+            frame_count = obj_info.get('frame_count', 0)
+            
+            if not bbox:
+                continue
+            
+            x1, y1, x2, y2 = bbox
+            color = self.colors.get(class_id, (0, 0, 255))
+            
+            # Рисуем прямоугольник
+            cv2.rectangle(result_frame, (x1, y1), (x2, y2), color, 2)
+            
+            # Формируем подпись: только тип, ID и статус
+            label_parts = [f"{object_type.upper()}#{object_id}"]
+            
+            # Добавляем статус
+            if status != 'unknown':
+                label_parts.append(f"[{status}]")
+            
+            label = " ".join(label_parts)
+            
+            label_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+            label_height = label_size[1] + baseline
+            
+            # Размещаем текст сверху рамки
+            label_y = y1 - 5
+            if label_y < label_height:
+                label_y = y1 + label_height + 5
+            
+            # Фон для текста
+            bg_y1 = label_y - label_height
+            bg_y2 = label_y
+            cv2.rectangle(result_frame, (x1, bg_y1),
+                         (x1 + label_size[0], bg_y2), color, -1)
+            
+            # Текст
+            cv2.putText(result_frame, label, (x1, label_y - baseline),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        
+        return result_frame

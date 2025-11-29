@@ -10,6 +10,7 @@ from src.filters import apply_color_filters, annotate_rejected
 from src.reid import FeatureExtractor
 from src.tracker import ReIDTracker
 from src.ocr_reader import TrainNumberOCR
+from src.object_manager import ObjectManager
 
 
 def process_image(image_path, detector, config):
@@ -170,6 +171,13 @@ def process_video(video_path, detector, config):
     tracker = None
     feature_extractor = None
     last_recognized_train_number = None  # Последний распознанный номер поезда
+    
+    # Инициализация менеджера объектов
+    use_objects = reid_cfg.get("use_objects", False)  # Использовать новый подход с объектами
+    object_manager = None
+    if use_objects:
+        object_manager = ObjectManager(class_names=detector.CLASSES)
+        print("Менеджер объектов инициализирован")
     
     if use_reid:
         print("Инициализация re-identification трекера...")
@@ -371,11 +379,47 @@ def process_video(video_path, detector, config):
                                 if track.train_number:
                                     train_numbers[track_id] = track.train_number
                     
-                    if tracks and len(tracks) > 0:
-                        # Отрисовка с ID треков и номерами поездов
-                        result_frame = detector.draw_detections(
-                            resized_frame, tracks, show_track_ids=True, train_numbers=train_numbers
+                    # Обновляем объекты из треков
+                    if use_objects and tracks:
+                        active_track_ids = set()
+                        for track_id, class_id, _, _, _, _, _ in tracks:
+                            active_track_ids.add(track_id)
+                            track = tracker.tracks.get(track_id)
+                            if track:
+                                object_manager.update_object_from_track(
+                                    track, processed_count, resized_frame
+                                )
+                        
+                        # Удаляем неактивные объекты
+                        object_manager.remove_inactive_objects(
+                            active_track_ids, 
+                            max_age=reid_cfg.get("max_age", 150)
                         )
+                    
+                    if tracks and len(tracks) > 0:
+                        if use_objects:
+                            # Отрисовка с использованием объектов
+                            objects_info = []
+                            for track_id, class_id, confidence, x1, y1, x2, y2 in tracks:
+                                screen_object = object_manager.get_object_by_track_id(track_id)
+                                if screen_object:
+                                    objects_info.append({
+                                        'track_id': track_id,
+                                        'object_id': screen_object.object_id,
+                                        'object_type': screen_object.object_type,
+                                        'class_id': screen_object.class_id,
+                                        'bbox': (x1, y1, x2, y2),
+                                        'status': screen_object.status.value,
+                                        'train_number': screen_object.train_number,
+                                        'frame_count': screen_object.frame_count
+                                    })
+                            
+                            result_frame = detector.draw_objects(resized_frame, objects_info)
+                        else:
+                            # Старая отрисовка с ID треков и номерами поездов
+                            result_frame = detector.draw_detections(
+                                resized_frame, tracks, show_track_ids=True, train_numbers=train_numbers
+                            )
                     else:
                         # Если треки еще не созданы, показываем детекции без ID
                         result_frame = detector.draw_detections(resized_frame, detections, show_track_ids=False)
@@ -397,18 +441,29 @@ def process_video(video_path, detector, config):
             
             # Информация на кадре
             if use_reid and tracker is not None and tracks:
-                # Подсчет уникальных треков
-                unique_tracks_by_class = {}
-                for track_id, class_id, _, _, _, _, _ in tracks:
-                    if class_id not in unique_tracks_by_class:
-                        unique_tracks_by_class[class_id] = set()
-                    unique_tracks_by_class[class_id].add(track_id)
-                
-                counts_text = " | ".join(
-                    f"{detector.CLASSES.get(cid, f'class_{cid}')}: {len(unique_tracks_by_class.get(cid, set()))}"
-                    for cid in target_classes
-                )
-                info_text = f"Кадр: {processed_count} | Треков: {len(tracks)}" + (f" | {counts_text}" if counts_text else "")
+                if use_objects and object_manager is not None:
+                    # Статистика по объектам
+                    stats = object_manager.get_statistics()
+                    counts_parts = []
+                    for object_type in sorted(stats.keys()):
+                        total = stats[object_type]['total']
+                        counts_parts.append(f"{object_type}: {total}")
+                    
+                    counts_text = " | ".join(counts_parts)
+                    info_text = f"Кадр: {processed_count} | Объектов: {len(tracks)}" + (f" | {counts_text}" if counts_text else "")
+                else:
+                    # Подсчет уникальных треков (старый подход)
+                    unique_tracks_by_class = {}
+                    for track_id, class_id, _, _, _, _, _ in tracks:
+                        if class_id not in unique_tracks_by_class:
+                            unique_tracks_by_class[class_id] = set()
+                        unique_tracks_by_class[class_id].add(track_id)
+                    
+                    counts_text = " | ".join(
+                        f"{detector.CLASSES.get(cid, f'class_{cid}')}: {len(unique_tracks_by_class.get(cid, set()))}"
+                        for cid in target_classes
+                    )
+                    info_text = f"Кадр: {processed_count} | Треков: {len(tracks)}" + (f" | {counts_text}" if counts_text else "")
             else:
                 counts_text = " | ".join(
                     f"{detector.CLASSES.get(cid, f'class_{cid}')}: {detections_count[cid]}"
@@ -455,13 +510,36 @@ def process_video(video_path, detector, config):
         print(f"Обработано кадров: {processed_count}")
         
         if use_reid and tracker is not None:
-            # Статистика по всем когда-либо созданным трекам
-            for cid in target_classes:
-                class_name = detector.CLASSES.get(cid, f"class_{cid}")
-                # Используем all_tracks_by_class для подсчета всех уникальных треков
-                unique_count = len(tracker.all_tracks_by_class.get(cid, set()))
-                active_count = len([t for t in tracker.tracks.values() if t.class_id == cid])
-                print(f"Уникальных треков {class_name}: {unique_count} (активных: {active_count})")
+            if use_objects and object_manager is not None:
+                # Статистика по объектам
+                print("\n=== Статистика объектов ===")
+                stats = object_manager.get_statistics()
+                for object_type, type_stats in stats.items():
+                    print(f"\n{object_type.upper()}:")
+                    print(f"  Всего объектов: {type_stats['total']}")
+                    if type_stats['by_status']:
+                        print("  По статусам:")
+                        for status, count in type_stats['by_status'].items():
+                            print(f"    {status}: {count}")
+                
+                # Детальная информация по объектам
+                if debug_cfg.get("log_detection_details"):
+                    print("\n=== Детальная информация об объектах ===")
+                    for obj in object_manager.get_all_objects():
+                        info = obj.get_info_dict()
+                        print(f"{obj.object_type.upper()}#{obj.object_id}: "
+                              f"статус={obj.status.value}, кадров={obj.frame_count}, "
+                              f"цветов={len(obj.dominant_colors)}")
+                        if obj.train_number:
+                            print(f"  Номер поезда: {obj.train_number}")
+            else:
+                # Старая статистика по трекам
+                for cid in target_classes:
+                    class_name = detector.CLASSES.get(cid, f"class_{cid}")
+                    # Используем all_tracks_by_class для подсчета всех уникальных треков
+                    unique_count = len(tracker.all_tracks_by_class.get(cid, set()))
+                    active_count = len([t for t in tracker.tracks.values() if t.class_id == cid])
+                    print(f"Уникальных треков {class_name}: {unique_count} (активных: {active_count})")
         else:
             for cid, count in detections_count.items():
                 class_name = detector.CLASSES.get(cid, f"class_{cid}")

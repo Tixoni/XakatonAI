@@ -33,9 +33,10 @@
   "re_identification": {
     "enabled": true,
     "max_distance": 0.5,
-    "max_age": 15,
+    "max_age": 150,
     "min_hits": 10,
-    "iou_threshold": 0.2
+    "iou_threshold": 0.2,
+    "use_objects": true
   },
   "train_number_ocr": {
     "enabled": true,
