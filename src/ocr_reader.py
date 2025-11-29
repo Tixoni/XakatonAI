@@ -35,6 +35,7 @@ CHAR_REPLACEMENTS = {
 }
 
 
+
 class TrainNumberOCR:
     """Класс для распознавания номеров поездов"""
     

@@ -7,6 +7,7 @@ import sys
 import json
 
 
+
 def load_config(config_path="config.json"):
     """Загрузка конфигурации"""
     # Получаем абсолютный путь к конфигу

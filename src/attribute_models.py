@@ -17,6 +17,7 @@ PPE_NAMES = {
     5: 'noHelmet',
     6: 'noVest',
     7: 'vest'
+    
 }
 
 # Маппинг ID классов одежды на имена
@@ -26,7 +27,8 @@ CLOTHES_NAMES = {
     5: 'pants',
     6: 'shirt',
     7: 'shoe',
-    8: 'shorts'
+    8: 'shorts',
+    10: 'sunglass'
 }
 
 

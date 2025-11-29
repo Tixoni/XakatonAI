@@ -7,6 +7,7 @@ import numpy as np
 from src.image_utils import extract_roi
 
 
+
 def parse_color_range(range_values):
     """Подготовка нижних и верхних границ цвета"""
     if not isinstance(range_values, (list, tuple)) or len(range_values) != 3:
@@ -211,15 +212,27 @@ def apply_color_filters(frame, detections, filters_cfg, class_map, debug_cfg=Non
                 info["red_percentage"] = red_percentage
                 info["min_red_threshold"] = min_red_threshold
             
-            # Проверяем процент синего цвета (должен быть <= 5%)
+            # Проверяем процент синего и голубого цвета (должен быть <= 5%)
             if passed:
                 blue_percentage = all_percentages.get("blue", 0.0)
+                cyan_percentage = all_percentages.get("cyan", 0.0)
+                
+                # Также проверяем в top_colors
+                for color_item in top_colors:
+                    color_name = color_item.get("name", "")
+                    if color_name == "blue":
+                        blue_percentage = max(blue_percentage, color_item.get("percentage", 0.0))
+                    elif color_name == "cyan":
+                        cyan_percentage = max(cyan_percentage, color_item.get("percentage", 0.0))
+                
+                # Суммируем синий и голубой цвета
+                total_blue_cyan = blue_percentage + cyan_percentage
                 max_blue_threshold = 0.05  # 5%
                 
-                if blue_percentage > max_blue_threshold:
+                if total_blue_cyan > max_blue_threshold:
                     passed = False
                     info["reason"] = "too_much_blue"
-                    info["blue_percentage"] = blue_percentage
+                    info["blue_percentage"] = total_blue_cyan
                     info["max_blue_threshold"] = max_blue_threshold
         
         if log_details:

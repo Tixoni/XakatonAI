@@ -24,6 +24,7 @@ class PPEDetector:
         "Glass": "safety_glasses"
     }
     
+    
     DEFAULT_COLORS = {
         "helmet": (0, 255, 255),        # Желтый для касок (BGR)
         "safety_vest": (255, 165, 0),   # Оранжевый для жилетов (BGR)

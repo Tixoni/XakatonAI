@@ -17,6 +17,7 @@ class ObjectManager:
         """
         Инициализация менеджера объектов
         
+        
         Args:
             class_names: словарь соответствия class_id -> имя класса
         """
@@ -134,9 +135,13 @@ class ObjectManager:
                 frame_height, frame_width = frame.shape[:2]
                 screen_object.update_status(frame_width=frame_width)
                 
-                # Обновляем номер поезда, если есть
-                if hasattr(track, 'train_number') and track.train_number:
-                    screen_object.train_number = track.train_number
+                # Обновляем номер поезда, если есть (всегда обновляем, если номер изменился)
+                if hasattr(track, 'train_number'):
+                    if track.train_number:
+                        screen_object.train_number = track.train_number
+                    # Если номер был удален в треке, тоже обновляем
+                    elif screen_object.train_number and not track.train_number:
+                        screen_object.train_number = None
                 
                 return screen_object
         

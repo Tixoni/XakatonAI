@@ -7,6 +7,7 @@ import cv2
 from ultralytics import YOLO
 
 
+
 class YOLODetector:
     """Класс для детекции объектов с использованием YOLO11"""
     
@@ -209,7 +210,7 @@ class YOLODetector:
             objects_info: список словарей с информацией об объектах
                 [{'track_id': int, 'object_id': int, 'object_type': str, 
                   'bbox': (x1, y1, x2, y2), 'status': str, 
-                  'train_number': str, 'frame_count': int}, ...]
+                  'train_number': str, 'frame_count': int, 'attributes': dict}, ...]
         """
         result_frame = frame.copy()
         
@@ -227,6 +228,7 @@ class YOLODetector:
             status = obj_info.get('status', 'unknown')
             train_number = obj_info.get('train_number')
             frame_count = obj_info.get('frame_count', 0)
+            attributes = obj_info.get('attributes', {})
             
             if not bbox:
                 continue
@@ -263,5 +265,34 @@ class YOLODetector:
             # Текст
             cv2.putText(result_frame, label, (x1, label_y - baseline),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            
+            # Отрисовка атрибутов (PPE и одежда) для людей
+            if object_type == "person" and attributes:
+                ppe_list = attributes.get("ppe", [])
+                clothes_list = attributes.get("clothes", [])
+                all_items = ppe_list + clothes_list
+                
+                if all_items:
+                    # Формируем строку с атрибутами
+                    attrs_text = ", ".join(all_items[:5])  # Ограничиваем до 5 элементов для читаемости
+                    if len(all_items) > 5:
+                        attrs_text += "..."
+                    
+                    # Размер текста атрибутов (меньше основного)
+                    attrs_size, attrs_baseline = cv2.getTextSize(attrs_text, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+                    attrs_height = attrs_size[1] + attrs_baseline
+                    
+                    # Размещаем атрибуты под основной подписью
+                    attrs_y = label_y + attrs_height + 5
+                    
+                    # Фон для текста атрибутов (светло-серый)
+                    attrs_bg_y1 = attrs_y - attrs_height
+                    attrs_bg_y2 = attrs_y
+                    cv2.rectangle(result_frame, (x1, attrs_bg_y1),
+                                 (x1 + attrs_size[0], attrs_bg_y2), (100, 100, 100), -1)
+                    
+                    # Текст атрибутов
+                    cv2.putText(result_frame, attrs_text, (x1, attrs_y - attrs_baseline),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
         
         return result_frame

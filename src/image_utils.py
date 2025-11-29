@@ -18,6 +18,7 @@ def imread_unicode(image_path):
     except:
         return None
 
+
 def resize_frame(frame, max_width, max_height, maintain_aspect=True, keep_width_native=False):
     """Изменение размера кадра с сохранением пропорций"""
     height, width = frame.shape[:2]
