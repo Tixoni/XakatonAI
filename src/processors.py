@@ -212,6 +212,7 @@ def process_video(video_path, detector, config):
     use_ppe = ppe_cfg.get("enabled", False)
     ppe_detector = None
     if use_ppe:
+<<<<<<< HEAD
          print("Инициализация детектора PPE...")
          try:
              ppe_model_path = ppe_cfg.get("model_path", None)
@@ -241,6 +242,30 @@ def process_video(video_path, detector, config):
              print("Продолжаем без детекции PPE...")
              use_ppe = False
              ppe_detector = None
+=======
+        print("Инициализация детектора PPE...")
+        try:
+            ppe_model_path = ppe_cfg.get("model_path", "PPE_detection_using_YOLOV8-main/yolov8s_custom.pt")
+            ppe_conf_threshold = ppe_cfg.get("confidence_threshold", 0.5)
+            ppe_detector = PPEDetector(
+                model_path=ppe_model_path,
+                conf_threshold=ppe_conf_threshold,
+                device=config.get("yolo", {}).get("device", "cpu"),
+                custom_colors=ppe_cfg.get("colors", {}),
+                half_precision=config.get("processing", {}).get("half_precision", False)
+            )
+            if ppe_detector.is_enabled():
+                print("Детектор PPE инициализирован успешно")
+            else:
+                print("Детектор PPE не инициализирован, продолжаем без детекции PPE...")
+                use_ppe = False
+                ppe_detector = None
+        except Exception as e:
+            print(f"Ошибка при инициализации детектора PPE: {e}")
+            print("Продолжаем без детекции PPE...")
+            use_ppe = False
+            ppe_detector = None
+>>>>>>> ccd72d230b67a6c5fba953dc2a0748b190518a89
     
     # Инициализация моделей атрибутов (PPE и одежда)
     attr_cfg = config.get("attributes", {})
@@ -517,8 +542,12 @@ def process_video(video_path, detector, config):
                                         'status': screen_object.status.value,
                                         'profession': screen_object.profession,
                                         'train_number': screen_object.train_number,
+<<<<<<< HEAD
                                         'frame_count': screen_object.frame_count,
                                         'attributes': screen_object.attributes
+=======
+                                        'frame_count': screen_object.frame_count
+>>>>>>> ccd72d230b67a6c5fba953dc2a0748b190518a89
                                     })
                             
                             result_frame = detector.draw_objects(resized_frame, objects_info)

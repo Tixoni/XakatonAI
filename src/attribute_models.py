@@ -71,7 +71,7 @@ class AttributeModels:
         
         Args:
             ppe_model_path: путь к модели PPE (ppe_best.pt)
-            clothes_model_path: путь к модели одежды (clothes_best.pt)
+            clothes_model_path: путь к модели одежды (cloches_best.pt)
             device: устройство для обработки (cpu, cuda)
             conf: порог уверенности
         """

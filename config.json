@@ -61,9 +61,9 @@
   "attributes": {
     "enabled": true,
     "ppe_model": "ppe_best.pt",
-    "clothes_model": "clothes_best.pt",
+    "clothes_model": "cloches_best.pt",
     "device": "cpu",
-    "confidence": 0.45,
-    "update_interval": 5
+    "confidence": 0.25,
+    "update_interval": 10
   }
 }
