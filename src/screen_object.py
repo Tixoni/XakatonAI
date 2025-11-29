@@ -7,6 +7,7 @@ from typing import List, Tuple, Dict, Optional
 from enum import Enum
 import cv2
 from src.image_utils import extract_roi
+from src.filters import detect_dominant_color
 
 
 class ObjectStatus(Enum):
@@ -23,18 +24,7 @@ class ScreenObject:
     def __init__(self, object_id: int, object_type: str, class_id: int,
                  bbox: Tuple[int, int, int, int], confidence: float,
                  frame_num: int, features: Optional[np.ndarray] = None):
-        """
-        Инициализация объекта на экране
-        
-        Args:
-            object_id: уникальный ID объекта в группе по типу
-            object_type: тип объекта ('person', 'train', и т.д.)
-            class_id: ID класса объекта (0 - person, 6 - train)
-            bbox: координаты (x1, y1, x2, y2)
-            confidence: уверенность детекции
-            frame_num: номер кадра создания
-            features: вектор признаков для re-identification
-        """
+       
         self.object_id = object_id  # Уникальный ID в группе по типу
         self.object_type = object_type  # 'person', 'train', и т.д.
         self.class_id = class_id
@@ -48,7 +38,8 @@ class ScreenObject:
         self.frame_count = 1  # Количество кадров, которое объект фиксировался камерой
         
         # Основные цвета объекта
-        self.dominant_colors: List[Tuple[int, int, int]] = []  # BGR формат
+        self.dominant_colors: List[Tuple[int, int, int]] = []  # BGR формат (для обратной совместимости)
+        self.color_info: Optional[Dict] = None  # Полная информация о цветах (названия, проценты, BGR)
         
         # Статус объекта
         self.status = ObjectStatus.UNKNOWN
@@ -91,48 +82,51 @@ class ScreenObject:
             else:
                 self.features = features
     
-    def update_colors(self, frame: np.ndarray):
+    def update_colors(self, frame: np.ndarray, top_n: int = 4, lighting_compensation: Optional[Dict] = None):
         """
         Обновляет основные цвета объекта на основе текущего кадра
+        Использует улучшенный метод detect_dominant_color из filters.py
         
         Args:
             frame: кадр изображения (BGR)
+            top_n: количество основных цветов для определения (по умолчанию 4)
+            lighting_compensation: настройки компенсации освещения (опционально)
         """
-        roi = extract_roi(frame, *self.bbox)
+        roi = extract_roi(frame, *self.bbox, crop_border_ratio=0.1)  # Обрезаем края на 10%
         if roi is None or roi.size == 0:
             return
         
-        # Используем K-means для определения основных цветов
-        # Упрощенный вариант - берем средние цвета по квадрантам
-        h, w = roi.shape[:2]
-        if h < 4 or w < 4:
-            # Если ROI слишком маленький, берем средний цвет
+        # Используем улучшенный метод определения цветов
+        try:
+            color_info = detect_dominant_color(
+                roi, 
+                top_n=top_n, 
+                lighting_compensation=lighting_compensation
+            )
+            
+            # Сохраняем полную информацию о цветах
+            self.color_info = color_info
+            
+            # Преобразуем результаты в формат BGR для обратной совместимости
+            top_colors = color_info.get("top_colors", [])
+            avg_bgr = color_info.get("bgr_avg", [0, 0, 0])
+            
+            if top_colors:
+                # Сохраняем средний BGR для каждого доминирующего цвета
+                # Используем средний BGR из всего ROI (можно улучшить, вычисляя для каждого цвета отдельно)
+                self.dominant_colors = [tuple(avg_bgr)] * min(len(top_colors), top_n)
+            else:
+                # Если цвета не определены, используем средний цвет ROI
+                if not avg_bgr or sum(avg_bgr) == 0:
+                    avg_color = np.mean(roi.reshape(-1, 3), axis=0)
+                    self.dominant_colors = [tuple(map(int, avg_color))]
+                else:
+                    self.dominant_colors = [tuple(avg_bgr)]
+        except Exception as e:
+            # Fallback на простой метод при ошибке
             avg_color = np.mean(roi.reshape(-1, 3), axis=0)
             self.dominant_colors = [tuple(map(int, avg_color))]
-        else:
-            # Делим на квадранты и берем средний цвет каждого
-            colors = []
-            quadrants = [
-                (0, 0, w//2, h//2),           # Верхний левый
-                (w//2, 0, w, h//2),           # Верхний правый
-                (0, h//2, w//2, h),          # Нижний левый
-                (w//2, h//2, w, h)           # Нижний правый
-            ]
-            
-            for x1, y1, x2, y2 in quadrants:
-                quadrant = roi[y1:y2, x1:x2]
-                if quadrant.size > 0:
-                    avg_color = np.mean(quadrant.reshape(-1, 3), axis=0)
-                    colors.append(tuple(map(int, avg_color)))
-            
-            # Обновляем основные цвета (берем до 4 самых частых)
-            if colors:
-                # Если цветов много, берем наиболее отличающиеся
-                if len(colors) > 4:
-                    # Упрощенный алгоритм - берем первые 4
-                    self.dominant_colors = colors[:4]
-                else:
-                    self.dominant_colors = colors
+            self.color_info = None
     
     def update_status(self):
         """
@@ -189,7 +183,7 @@ class ScreenObject:
         Returns:
             словарь с информацией
         """
-        return {
+        info = {
             'object_id': self.object_id,
             'object_type': self.object_type,
             'class_id': self.class_id,
@@ -202,6 +196,16 @@ class ScreenObject:
             'first_seen_frame': self.frame_num,
             'last_update_frame': self.last_update_frame
         }
+        
+        # Добавляем полную информацию о цветах, если доступна
+        if self.color_info:
+            info['color_info'] = {
+                'top_colors': self.color_info.get('top_colors', []),
+                'all_percentages': self.color_info.get('all_percentages', {}),
+                'bgr_avg': self.color_info.get('bgr_avg', [])
+            }
+        
+        return info
     
     def __repr__(self):
         return (f"ScreenObject(id={self.object_id}, type={self.object_type}, "

@@ -28,15 +28,7 @@ class ObjectManager:
         self.track_to_object: Dict[int, Tuple[str, int]] = {}  # track_id -> (object_type, object_id)
     
     def get_object_type(self, class_id: int) -> str:
-        """
-        Получает тип объекта по class_id
         
-        Args:
-            class_id: ID класса
-            
-        Returns:
-            тип объекта (например, 'person', 'train')
-        """
         return self.class_names.get(class_id, f"class_{class_id}").lower()
     
     def create_object_from_track(self, track: Track, frame_num: int) -> ScreenObject:
@@ -107,7 +99,9 @@ class ObjectManager:
                 
                 # Обновляем цвета (каждый N-й кадр для оптимизации)
                 if frame_num % 5 == 0:  # Обновляем цвета каждые 5 кадров
-                    screen_object.update_colors(frame)
+                    # Используем компенсацию освещения для лучшего определения цветов
+                    lighting_compensation = {"enabled": True, "normalize_brightness": False, "wider_color_ranges": True}
+                    screen_object.update_colors(frame, top_n=4, lighting_compensation=lighting_compensation)
                 
                 # Обновляем статус
                 screen_object.update_status()
@@ -196,15 +190,32 @@ class ObjectManager:
         for object_type, objects_dict in self.objects_by_type.items():
             stats[object_type] = {
                 'total': len(objects_dict),
-                'by_status': {}
+                'by_status': {},
+                'by_colors': {}  # Статистика по цветам
             }
             
-            # Подсчет по статусам
+            # Подсчет по статусам и цветам
             for obj in objects_dict.values():
+                # Статусы
                 status = obj.status.value
                 if status not in stats[object_type]['by_status']:
                     stats[object_type]['by_status'][status] = 0
                 stats[object_type]['by_status'][status] += 1
+                
+                # Цвета
+                if obj.color_info and obj.color_info.get('top_colors'):
+                    # Берем основной цвет (первый в списке)
+                    top_colors = obj.color_info.get('top_colors', [])
+                    if top_colors:
+                        main_color = top_colors[0].get('name', 'unknown')
+                        if main_color not in stats[object_type]['by_colors']:
+                            stats[object_type]['by_colors'][main_color] = 0
+                        stats[object_type]['by_colors'][main_color] += 1
+                else:
+                    # Если цвет не определен
+                    if 'unknown' not in stats[object_type]['by_colors']:
+                        stats[object_type]['by_colors']['unknown'] = 0
+                    stats[object_type]['by_colors']['unknown'] += 1
         
         return stats
 

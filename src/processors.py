@@ -521,15 +521,37 @@ def process_video(video_path, detector, config):
                         print("  По статусам:")
                         for status, count in type_stats['by_status'].items():
                             print(f"    {status}: {count}")
+                    if type_stats.get('by_colors'):
+                        print("  По цветам:")
+                        # Сортируем цвета по количеству (от большего к меньшему)
+                        sorted_colors = sorted(
+                            type_stats['by_colors'].items(), 
+                            key=lambda x: x[1], 
+                            reverse=True
+                        )
+                        for color, count in sorted_colors:
+                            print(f"    {color}: {count}")
                 
                 # Детальная информация по объектам
                 if debug_cfg.get("log_detection_details"):
                     print("\n=== Детальная информация об объектах ===")
                     for obj in object_manager.get_all_objects():
                         info = obj.get_info_dict()
+                        color_info_str = "unknown"
+                        if obj.color_info and obj.color_info.get('top_colors'):
+                            top_colors = obj.color_info.get('top_colors', [])
+                            if top_colors:
+                                # Формируем строку с цветами и процентами
+                                color_parts = []
+                                for color_item in top_colors[:3]:  # Берем до 3 основных цветов
+                                    name = color_item.get('name', 'unknown')
+                                    pct = color_item.get('percentage', 0.0)
+                                    color_parts.append(f"{name}({pct:.1%})")
+                                color_info_str = ", ".join(color_parts)
+                        
                         print(f"{obj.object_type.upper()}#{obj.object_id}: "
                               f"статус={obj.status.value}, кадров={obj.frame_count}, "
-                              f"цветов={len(obj.dominant_colors)}")
+                              f"цвета={color_info_str}")
                         if obj.train_number:
                             print(f"  Номер поезда: {obj.train_number}")
             else:
