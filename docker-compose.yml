@@ -41,6 +41,19 @@ services:
       - xakaton_network
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: xakaton_frontend
+    depends_on:
+      - app
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - xakaton_network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
 
