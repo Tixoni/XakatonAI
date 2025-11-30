@@ -18,6 +18,7 @@ def imread_unicode(image_path):
         return None
 
 
+
 def resize_frame(frame, max_width, max_height, maintain_aspect=True, keep_width_native=False):
     height, width = frame.shape[:2]
     
@@ -52,6 +53,19 @@ def resize_frame(frame, max_width, max_height, maintain_aspect=True, keep_width_
 
 def extract_roi(frame, x1, y1, x2, y2, crop_border_ratio=0.0):
     h, w = frame.shape[:2]
+    
+    # Применяем обрезку краев, если указано
+    if crop_border_ratio > 0.0 and crop_border_ratio < 0.5:
+        width = x2 - x1
+        height = y2 - y1
+        crop_x = int(width * crop_border_ratio)
+        crop_y = int(height * crop_border_ratio)
+        x1 = x1 + crop_x
+        y1 = y1 + crop_y
+        x2 = x2 - crop_x
+        y2 = y2 - crop_y
+    
+    # Проверяем границы
     
     # Применяем обрезку краев, если указано
     if crop_border_ratio > 0.0 and crop_border_ratio < 0.5:

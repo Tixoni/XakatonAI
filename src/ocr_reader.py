@@ -33,6 +33,34 @@ CHAR_REPLACEMENTS = {
 }
 
 
+# Замена похожих символов, которые OCR часто путает
+CHAR_REPLACEMENTS = {
+    # Латинские буквы, похожие на цифры
+    'O': '0',  # Латинская O -> 0
+    'o': '0',  # Строчная o -> 0
+    'I': '1',  # I -> 1
+    'l': '1',  # l -> 1
+    '|': '1',  # | -> 1
+    'S': '5',  # S -> 5
+    's': '5',
+    'D': '0',  # D -> 0 (иногда)
+    'd': '0',
+    'G': '6',  # G -> 6 (иногда)
+    'g': '6',
+    'Q': '0',  # Q -> 0
+    'q': '0',
+    # Кириллические буквы, похожие на цифры
+    'О': '0',  # Кириллическая О -> 0
+    'о': '0',  # Строчная о -> 0
+    'З': '3',  # З -> 3
+    'з': '3',
+    'Б': '6',  # Б -> 6
+    'б': '6',
+    'В': '8',  # В -> 8 (иногда)
+    'в': '8',
+}
+
+
 
 class TrainNumberOCR:
 
@@ -41,6 +69,8 @@ class TrainNumberOCR:
 
         self.ocr_engine = ocr_engine
         self.languages = languages
+        self.allowed_chars = set(allowed_chars)
+        self.expected_length = expected_length
         self.allowed_chars = set(allowed_chars)
         self.expected_length = expected_length
         self.reader = None
@@ -156,8 +186,25 @@ class TrainNumberOCR:
             
             # Собираем все распознанные тексты с их позициями
             texts_with_pos = []
+            # Собираем все распознанные тексты с их позициями
+            texts_with_pos = []
             for (bbox, text, confidence) in results:
                 if confidence > 0.2:  # Снижаем порог для лучшего распознавания
+                    # Вычисляем минимальную x координату (левый край) для сортировки слева направо
+                    # bbox - это numpy array формы (4, 2) с точками [x, y]
+                    if isinstance(bbox, np.ndarray):
+                        x_min = float(np.min(bbox[:, 0]))  # Минимальная x координата
+                    else:
+                        # Если это список, берем минимальную x из всех точек
+                        x_min = min(point[0] for point in bbox)
+                    texts_with_pos.append((x_min, text.strip(), confidence))
+            
+            if texts_with_pos:
+                # Сортируем по позиции (x координате) слева направо для правильного порядка
+                texts_with_pos.sort(key=lambda x: x[0])
+                
+                # Объединяем тексты в правильном порядке
+                combined_text = ''.join([t[1] for t in texts_with_pos])
                     # Вычисляем минимальную x координату (левый край) для сортировки слева направо
                     # bbox - это numpy array формы (4, 2) с точками [x, y]
                     if isinstance(bbox, np.ndarray):
@@ -178,8 +225,14 @@ class TrainNumberOCR:
                 # Убираем только специальные символы, оставляем буквы, цифры и пробелы
                 cleaned = re.sub(r'[^\w\sА-Яа-яЁё]', '', combined_text)
                 cleaned = re.sub(r'\s+', '', cleaned)  # Убираем все пробелы
+                cleaned = re.sub(r'\s+', '', cleaned)  # Убираем все пробелы
                 result = cleaned.strip()
                 
+                # Фильтруем только допустимые символы для номера поезда
+                filtered_result = self.filter_train_number(result)
+                
+                if filtered_result:
+                    return filtered_result
                 # Фильтруем только допустимые символы для номера поезда
                 filtered_result = self.filter_train_number(result)
                 
@@ -203,11 +256,19 @@ class TrainNumberOCR:
             # Конфигурация для распознавания цифр и букв (используем допустимые символы из конфига)
             allowed_chars_str = ''.join(sorted(self.allowed_chars))
             config = f'--oem 3 --psm 7 -c tessedit_char_whitelist={allowed_chars_str}'
+            # Конфигурация для распознавания цифр и букв (используем допустимые символы из конфига)
+            allowed_chars_str = ''.join(sorted(self.allowed_chars))
+            config = f'--oem 3 --psm 7 -c tessedit_char_whitelist={allowed_chars_str}'
             
             # Распознавание
             text = self.reader.image_to_string(processed, config=config, lang='eng+rus')
             
             if text:
+                # Фильтруем только допустимые символы для номера поезда
+                filtered_result = self.filter_train_number(text)
+                
+                if filtered_result:
+                    return filtered_result
                 # Фильтруем только допустимые символы для номера поезда
                 filtered_result = self.filter_train_number(text)
                 

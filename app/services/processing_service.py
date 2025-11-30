@@ -1,3 +1,10 @@
+<<<<<<< HEAD
+=======
+"""
+Сервис для обработки изображений и видео
+"""
+
+>>>>>>> 96c9164326da5478221e96eff070abdfbbfb1e82
 import cv2
 import numpy as np
 import time
@@ -22,6 +29,11 @@ from app.services.detector_service import DetectorService
 
 
 class ProcessingService:
+<<<<<<< HEAD
+=======
+    """Сервис для обработки изображений и видео"""
+    
+>>>>>>> 96c9164326da5478221e96eff070abdfbbfb1e82
     def __init__(self, detector_service: DetectorService, config: Dict[str, Any]):
         self.detector_service = detector_service
         self.config = config
@@ -32,7 +44,20 @@ class ProcessingService:
         image: np.ndarray,
         request_params: Dict[str, Any]
     ) -> Tuple[List[ObjectInfo], Optional[np.ndarray], Dict[str, Any]]:
+<<<<<<< HEAD
 
+=======
+        """
+        Обработка изображения
+        
+        Args:
+            image: изображение (numpy array)
+            request_params: параметры запроса
+            
+        Returns:
+            tuple: (список объектов, обработанное изображение, статистика)
+        """
+>>>>>>> 96c9164326da5478221e96eff070abdfbbfb1e82
         start_time = time.time()
         
         # Получаем параметры
@@ -148,6 +173,19 @@ class ProcessingService:
         video_path: str,
         request_params: Dict[str, Any]
     ) -> Tuple[List[ObjectInfo], Optional[str], Dict[str, Any]]:
+<<<<<<< HEAD
+=======
+        """
+        Обработка видео
+        
+        Args:
+            video_path: путь к видео файлу
+            request_params: параметры запроса
+            
+        Returns:
+            tuple: (список объектов, путь к обработанному видео, метаданные)
+        """
+>>>>>>> 96c9164326da5478221e96eff070abdfbbfb1e82
         start_time = time.time()
         
         # Обновляем конфиг с параметрами запроса

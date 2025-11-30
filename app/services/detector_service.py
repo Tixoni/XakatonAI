@@ -1,3 +1,10 @@
+<<<<<<< HEAD
+=======
+"""
+Сервис для инициализации и управления детекторами
+"""
+
+>>>>>>> 96c9164326da5478221e96eff070abdfbbfb1e82
 import os
 import sys
 from pathlib import Path
@@ -21,6 +28,11 @@ warnings.filterwarnings("ignore", message=".*pin_memory.*", category=UserWarning
 
 
 class DetectorService:
+<<<<<<< HEAD
+=======
+    """Сервис для управления детекторами"""
+    
+>>>>>>> 96c9164326da5478221e96eff070abdfbbfb1e82
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.detector: Optional[YOLODetector] = None
@@ -31,6 +43,10 @@ class DetectorService:
         self._initialized = False
     
     def initialize(self):
+<<<<<<< HEAD
+=======
+        """Инициализация всех детекторов"""
+>>>>>>> 96c9164326da5478221e96eff070abdfbbfb1e82
         if self._initialized:
             return
         
@@ -142,6 +158,10 @@ class DetectorService:
         self._initialized = True
     
     def get_models_status(self) -> Dict[str, bool]:
+<<<<<<< HEAD
+=======
+        """Получить статус загрузки моделей"""
+>>>>>>> 96c9164326da5478221e96eff070abdfbbfb1e82
         return {
             "detector": self.detector is not None,
             "ppe_detector": self.ppe_detector is not None and self.ppe_detector.is_enabled(),
