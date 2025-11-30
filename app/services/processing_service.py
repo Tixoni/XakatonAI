@@ -20,6 +20,7 @@ from src.object_manager import ObjectManager
 from src.filters import apply_color_filters
 from src.image_utils import resize_frame
 from src.db import insert_worker, insert_train
+from src.uploader import upload_file
 from app.models import ObjectInfo, Statistics, DetectionResponse
 from app.services.detector_service import DetectorService
 
@@ -533,6 +534,105 @@ class ProcessingService:
                 print("   2. Переменные окружения POSTGRES_* установлены")
                 print("   3. Сеть между контейнерами работает")
             print("Продолжаем без сохранения в БД...")
+        
+        # Генерация CSV отчета
+        try:
+            import csv
+            from datetime import datetime
+            
+            csv_dir = Path(config.get("processing", {}).get("output_dir", "results"))
+            csv_dir.mkdir(exist_ok=True)
+            
+            # Имя файла с timestamp
+            video_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            csv_filename = f"report_{Path(video_path).stem}_{video_timestamp}.csv"
+            csv_path = csv_dir / csv_filename
+            
+            print(f"\n=== Генерация CSV отчета ===")
+            
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f, delimiter=";")
+                
+                # Заголовки
+                writer.writerow([
+                    "type",
+                    "id",
+                    "colors",
+                    "ppe",
+                    "clothes",
+                    "first_seen",
+                    "last_seen",
+                    "train_number",
+                    "arrival_time",
+                    "departure_time",
+                    "video_timestamp"
+                ])
+                
+                # Получаем все объекты для CSV
+                csv_objects = video_object_manager.get_all_objects()
+                
+                # Создаем обратный словарь для track_id
+                object_to_track_csv = {}
+                for track_id, (obj_type, obj_id) in video_object_manager.track_to_object.items():
+                    object_to_track_csv[(obj_type, obj_id)] = track_id
+                
+                # Обрабатываем людей
+                for obj in csv_objects:
+                    if obj.object_type == "person":
+                        track_id = object_to_track_csv.get((obj.object_type, obj.object_id), obj.object_id)
+                        
+                        # Получаем цвета
+                        colors = []
+                        if obj.color_info and obj.color_info.get('top_colors'):
+                            colors = [color_item.get('name', 'unknown') for color_item in obj.color_info.get('top_colors', [])]
+                        
+                        # Получаем PPE и одежду
+                        ppe_list = obj.attributes.get("ppe", []) if obj.attributes else []
+                        clothes_list = obj.attributes.get("clothes", []) if obj.attributes else []
+                        
+                        writer.writerow([
+                            "person",
+                            track_id,
+                            ",".join(colors),
+                            ",".join(ppe_list),
+                            ",".join(clothes_list),
+                            obj.frame_num,  # first_seen_frame
+                            obj.last_update_frame,  # last_seen_frame
+                            "",  # train_number (для людей пусто)
+                            "",  # arrival_time
+                            "",  # departure_time
+                            video_timestamp
+                        ])
+                
+                # Обрабатываем поезда
+                train_objects_csv = [obj for obj in csv_objects if obj.object_type == "train"]
+                for obj in train_objects_csv:
+                    track_id = object_to_track_csv.get((obj.object_type, obj.object_id), obj.object_id)
+                    
+                    # Для поездов arrival_time и departure_time - это first_seen и last_seen
+                    writer.writerow([
+                        "train",
+                        track_id,
+                        "",  # colors (для поездов пусто)
+                        "",  # ppe
+                        "",  # clothes
+                        obj.frame_num,  # first_seen_frame
+                        obj.last_update_frame,  # last_seen_frame
+                        obj.train_number or "",  # train_number
+                        obj.frame_num,  # arrival_time (first_seen)
+                        obj.last_update_frame,  # departure_time (last_seen)
+                        video_timestamp
+                    ])
+            
+            print(f"[CSV] Создан: {csv_path}")
+            
+            # Загрузка на Yandex Cloud
+            upload_file(str(csv_path), csv_filename)
+            
+        except Exception as e:
+            print(f"[CSV ERROR] Ошибка при создании CSV: {e}")
+            import traceback
+            traceback.print_exc()
         
         return objects, output_path, {
             "statistics": stats,

@@ -1,0 +1,17 @@
+type;id;colors;ppe;clothes;first_seen;last_seen;train_number;arrival_time;departure_time;video_timestamp
+person;7;;;;883;883;;;;20251130_044822
+person;11;;;;1871;1871;;;;20251130_044822
+person;25;green,gray,light_gray;gloves,helmet,noHelmet;cloth_1,jacket,pants,shirt,shoe,sunglass;5035;7772;;;;20251130_044822
+person;29;red,orange,gray;;;5833;5836;;;;20251130_044822
+person;33;;;;6277;6277;;;;20251130_044822
+person;35;red,gray,dark_gray;helmet;cloth_1;6412;7772;;;;20251130_044822
+person;36;;;;6425;6425;;;;20251130_044822
+person;38;dark_gray,gray,orange;;shirt;6595;6603;;;;20251130_044822
+person;39;gray,dark_gray,light_gray,red;;;7016;7022;;;;20251130_044822
+person;40;gray,dark_gray,light_gray,orange;;;7134;7135;;;;20251130_044822
+person;41;;;;7316;7316;;;;20251130_044822
+person;42;;;;7563;7563;;;;20251130_044822
+person;43;dark_gray,gray;;;7619;7622;;;;20251130_044822
+train;1;;;;1;7772;ЭП20П75;1;7772;20251130_044822
+train;21;;;;3705;3705;;3705;3705;20251130_044822
+train;24;;;;4927;7772;ЭП20П75;4927;7772;20251130_044822

@@ -1,11 +1,11 @@
 @echo off
 chcp 65001 >nul
-REM Quick test script for suber_short.mp4 video
+REM Quick test script for final_vid.mp4 video
 REM Just double-click to run!
 
 setlocal enabledelayedexpansion
 
-set "VIDEO_FILE=suber_short.mp4"
+set "VIDEO_FILE=final_Vid.mp4"
 
 if not exist "!VIDEO_FILE!" (
     echo Error: File "!VIDEO_FILE!" not found!
