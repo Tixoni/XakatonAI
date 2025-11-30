@@ -1,6 +1,3 @@
-"""
-Модуль для обработки изображений и видео
-"""
 
 import cv2
 import os
@@ -10,10 +7,12 @@ from src.filters import apply_color_filters, annotate_rejected
 from src.reid import FeatureExtractor
 from src.tracker import ReIDTracker
 from src.ocr_reader import TrainNumberOCR
+from src.object_manager import ObjectManager
+from src.ppe_detector import PPEDetector
+from src.attribute_models import AttributeModels, map_ppe_names, map_clothes_names
 
 
 def process_image(image_path, detector, config):
-    """Обработка изображения"""
     print(f"Загрузка изображения: {image_path}")
     
     if not os.path.exists(image_path):
@@ -70,6 +69,31 @@ def process_image(image_path, detector, config):
         print(f"  - {class_name}: {confidence:.2f}")
     
     result_image = detector.draw_detections(image, detections)
+    
+    # Детекция PPE для изображений
+    ppe_cfg = config.get("ppe_detection", {})
+    use_ppe = ppe_cfg.get("enabled", False)
+    if use_ppe:
+        try:
+            ppe_model_path = ppe_cfg.get("model_path", "PPE_detection_using_YOLOV8-main/yolov8s_custom.pt")
+            ppe_conf_threshold = ppe_cfg.get("confidence_threshold", 0.5)
+            ppe_detector = PPEDetector(
+                model_path=ppe_model_path,
+                conf_threshold=ppe_conf_threshold,
+                device=config.get("yolo", {}).get("device", "cpu"),
+                custom_colors=ppe_cfg.get("colors", {}),
+                half_precision=config.get("processing", {}).get("half_precision", False)
+            )
+            if ppe_detector.is_enabled():
+                ppe_target_classes = ppe_cfg.get("target_classes", None)
+                ppe_detections = ppe_detector.detect(image, target_classes=ppe_target_classes)
+                if ppe_detections:
+                    print(f"Найдено PPE: {len(ppe_detections)}")
+                    for class_name, confidence, x1, y1, x2, y2 in ppe_detections:
+                        print(f"  - {class_name}: {confidence:.2f}")
+                    result_image = ppe_detector.draw_detections(result_image, ppe_detections)
+        except Exception as e:
+            print(f"Ошибка при детекции PPE: {e}")
     
     if debug_cfg.get("show_filtered_objects") and rejected:
         result_image = annotate_rejected(result_image, rejected, detector)
@@ -163,12 +187,88 @@ def process_video(video_path, detector, config):
     rejected_total = 0
     writer = None
     output_path = None
+    ppe_total_count = {}  # Общий счетчик детекций PPE по классам
     
     # Инициализация re-identification трекера
     reid_cfg = config.get("re_identification", {})
     use_reid = reid_cfg.get("enabled", False)
     tracker = None
     feature_extractor = None
+    last_recognized_train_number = None  # Последний распознанный номер поезда
+    
+    # Инициализация менеджера объектов
+    use_objects = reid_cfg.get("use_objects", False)  # Использовать новый подход с объектами
+    object_manager = None
+    if use_objects:
+        object_manager = ObjectManager(class_names=detector.CLASSES)
+        print("Менеджер объектов инициализирован")
+    
+    # Инициализация детектора PPE
+    ppe_cfg = config.get("ppe_detection", {})
+    use_ppe = ppe_cfg.get("enabled", False)
+    ppe_detector = None
+    if use_ppe:
+         print("Инициализация детектора PPE...")
+         try:
+             ppe_model_path = ppe_cfg.get("model_path", None)
+             # Если путь не указан или файл не существует, отключаем детекцию PPE
+             if ppe_model_path and not os.path.exists(ppe_model_path):
+                 print(f"Файл модели PPE не найден: {ppe_model_path}")
+                 print("Детекция PPE будет отключена")
+                 use_ppe = False
+                 ppe_detector = None
+             else:
+                 ppe_conf_threshold = ppe_cfg.get("confidence_threshold", 0.5)
+                 ppe_detector = PPEDetector(
+                     model_path=ppe_model_path,
+                     conf_threshold=ppe_conf_threshold,
+                     device=config.get("yolo", {}).get("device", "cpu"),
+                     custom_colors=ppe_cfg.get("colors", {}),
+                     half_precision=config.get("processing", {}).get("half_precision", False)
+                 )
+                 if ppe_detector.is_enabled():
+                     print("Детектор PPE инициализирован успешно")
+                 else:
+                     print("Детектор PPE не инициализирован, продолжаем без детекции PPE...")
+                     use_ppe = False
+                     ppe_detector = None
+         except Exception as e:
+             print(f"Ошибка при инициализации детектора PPE: {e}")
+             print("Продолжаем без детекции PPE...")
+             use_ppe = False
+             ppe_detector = None
+    
+    # Инициализация моделей атрибутов (PPE и одежда)
+    attr_cfg = config.get("attributes", {})
+    use_attributes = attr_cfg.get("enabled", False)
+    attribute_models = None
+    attr_update_interval = attr_cfg.get("update_interval", 10)
+    
+    if use_attributes:
+        print("Инициализация моделей атрибутов (PPE и одежда)...")
+        try:
+            ppe_model_path = attr_cfg.get("ppe_model")
+            clothes_model_path = attr_cfg.get("clothes_model")
+            attr_device = attr_cfg.get("device", config.get("yolo", {}).get("device", "cpu"))
+            attr_conf = attr_cfg.get("confidence", 0.25)
+            
+            attribute_models = AttributeModels(
+                ppe_model_path=ppe_model_path,
+                clothes_model_path=clothes_model_path,
+                device=attr_device,
+                conf=attr_conf
+            )
+            if attribute_models.is_enabled():
+                print("Модели атрибутов инициализированы успешно")
+            else:
+                print("Модели атрибутов не инициализированы, продолжаем без детекции атрибутов...")
+                use_attributes = False
+                attribute_models = None
+        except Exception as e:
+            print(f"Ошибка при инициализации моделей атрибутов: {e}")
+            print("Продолжаем без детекции атрибутов...")
+            use_attributes = False
+            attribute_models = None
     
     if use_reid:
         print("Инициализация re-identification трекера...")
@@ -201,18 +301,24 @@ def process_video(video_path, detector, config):
         print("Инициализация OCR для распознавания номеров поездов...")
         try:
             ocr_engine = ocr_cfg.get("engine", "easyocr")
-            ocr_reader = TrainNumberOCR(ocr_engine=ocr_engine)
+            allowed_chars = ocr_cfg.get("allowed_chars", "0123456789ЭП")
+            expected_length = ocr_cfg.get("expected_length", 7)
+            ocr_reader = TrainNumberOCR(
+                ocr_engine=ocr_engine,
+                allowed_chars=allowed_chars,
+                expected_length=expected_length
+            )
             if ocr_reader.reader is None:
                 print("OCR не инициализирован, продолжаем без распознавания номеров...")
                 use_ocr = False
             else:
                 print(f"OCR инициализирован успешно (проверка каждые {ocr_frame_skip} кадров)")
+                print(f"Допустимые символы: {allowed_chars}, ожидаемая длина: {expected_length}")
         except Exception as e:
             print(f"Ошибка при инициализации OCR: {e}")
             print("Продолжаем без распознавания номеров...")
             use_ocr = False
             ocr_reader = None
-    
 
     frame_count = 0
     processed_count = 0
@@ -244,11 +350,20 @@ def process_video(video_path, detector, config):
             else:
                 resized_frame = frame
             
-            # Детекция
+            # Детекция основных объектов (люди, поезда)
             detections = detector.detect(resized_frame, target_classes=target_classes)
             detections, rejected = apply_color_filters(resized_frame, detections, color_filters, detector.CLASSES, debug_cfg)
             rejected_total += len(rejected)
             
+            # Детекция PPE (каски, амуниция)
+            ppe_detections = []
+            if use_ppe and ppe_detector is not None:
+                try:
+                    ppe_target_classes = ppe_cfg.get("target_classes", None)  # None = все классы PPE
+                    ppe_detections = ppe_detector.detect(resized_frame, target_classes=ppe_target_classes)
+                except Exception as e:
+                    if debug_cfg.get("log_detection_details"):
+                        print(f"Ошибка при детекции PPE: {e}")
 
             # Re-identification трекинг
             tracks = None
@@ -273,6 +388,8 @@ def process_video(video_path, detector, config):
                                 try:
                                     train_number = ocr_reader.recognize_from_right_half(resized_frame)
                                     if train_number:
+                                        last_recognized_train_number = train_number  # Сохраняем последний распознанный номер
+                                        
                                         # Присваиваем номер всем поездам в кадре
                                         if tracks:
                                             for track_id, class_id, _, _, _, _, _ in tracks:
@@ -281,7 +398,14 @@ def process_video(video_path, detector, config):
                                                     if track:
                                                         track.train_number = train_number
                                                         train_numbers[track_id] = train_number
-                                            print(f"Распознан номер поезда из правого нижнего квадранта: {train_number}")
+                                            print(f"[OCR] Распознан номер поезда: {train_number} (из правого нижнего квадранта)")
+                                        
+                                        # Присваиваем номер всем существующим трекам поездов в tracker
+                                        for track_id, track in tracker.tracks.items():
+                                            if track.class_id == 6:  # train
+                                                if not track.train_number:  # Присваиваем только если номер еще не установлен
+                                                    track.train_number = train_number
+                                                train_numbers[track_id] = track.train_number or train_number
                                 except Exception as e:
                                     if debug_cfg.get("log_detection_details"):
                                         print(f"Ошибка OCR (правый нижний квадрант): {e}")
@@ -294,16 +418,23 @@ def process_video(video_path, detector, config):
                                     train_number = ocr_reader.recognize_train_number(
                                         resized_frame, fixed_roi
                                     )
-                                    if train_number and tracks:
-                                        # Присваиваем номер всем поездам в кадре
-                                        for track_id, class_id, _, _, _, _, _ in tracks:
-                                            if class_id == 6:  # train
-                                                track = tracker.tracks.get(track_id)
-                                                if track:
+                                    if train_number:
+                                        if tracks:
+                                            # Присваиваем номер всем поездам в кадре
+                                            for track_id, class_id, _, _, _, _, _ in tracks:
+                                                if class_id == 6:  # train
+                                                    track = tracker.tracks.get(track_id)
+                                                    if track:
+                                                        track.train_number = train_number
+                                                        train_numbers[track_id] = train_number
+                                        else:
+                                            # Присваиваем номер всем существующим трекам поездов
+                                            for track_id, track in tracker.tracks.items():
+                                                if track.class_id == 6:  # train
                                                     track.train_number = train_number
                                                     train_numbers[track_id] = train_number
                                         if processed_count % 30 == 0:
-                                            print(f"Распознан номер поезда из фиксированной области: {train_number}")
+                                            print(f"[OCR] Распознан номер поезда: {train_number} (из фиксированной области)")
                                 elif tracks:
                                     # Используем область детектированного поезда
                                     for track_id, class_id, confidence, x1, y1, x2, y2 in tracks:
@@ -319,32 +450,79 @@ def process_video(video_path, detector, config):
                                                     )
                                                     if train_number:
                                                         track.train_number = train_number
-                                                        print(f"Распознан номер поезда ID:{track_id}: {train_number}")
+                                                        train_numbers[track_id] = train_number
+                                                        print(f"[OCR] Распознан номер поезда ID:{track_id}: {train_number}")
                                                 except Exception as e:
                                                     if debug_cfg.get("log_detection_details"):
                                                         print(f"Ошибка OCR для трека {track_id}: {e}")
-                            
-                            # Добавляем уже распознанные номера в словарь для отрисовки
-                            if tracks:
-                                for track_id, class_id, _, _, _, _, _ in tracks:
-                                    if class_id == 6:  # train
-                                        track = tracker.tracks.get(track_id)
-                                        if track and track.train_number:
-                                            train_numbers[track_id] = track.train_number
-                        else:
-                            # В промежуточных кадрах просто используем уже распознанные номера
-                            if tracks:
-                                for track_id, class_id, _, _, _, _, _ in tracks:
-                                    if class_id == 6:  # train
-                                        track = tracker.tracks.get(track_id)
-                                        if track and track.train_number:
-                                            train_numbers[track_id] = track.train_number
+                    
+                    # ВСЕГДА извлекаем уже распознанные номера из треков для отрисовки
+                    # (как в кадрах с OCR, так и в промежуточных кадрах)
+                    if tracks:
+                        for track_id, class_id, _, _, _, _, _ in tracks:
+                            if class_id == 6:  # train
+                                track = tracker.tracks.get(track_id)
+                                if track:
+                                    # Если у трека нет номера, но есть последний распознанный номер, присваиваем его
+                                    if not track.train_number and last_recognized_train_number:
+                                        track.train_number = last_recognized_train_number
+                                    if track.train_number:
+                                        train_numbers[track_id] = track.train_number
+                    else:
+                        # Если треков еще нет в текущем кадре, но они есть в tracker, используем их
+                        for track_id, track in tracker.tracks.items():
+                            if track.class_id == 6:  # train
+                                # Если у трека нет номера, но есть последний распознанный номер, присваиваем его
+                                if not track.train_number and last_recognized_train_number:
+                                    track.train_number = last_recognized_train_number
+                                if track.train_number:
+                                    train_numbers[track_id] = track.train_number
+                    
+                    # Обновляем объекты из треков
+                    if use_objects and tracks:
+                        active_track_ids = set()
+                        for track_id, class_id, _, _, _, _, _ in tracks:
+                            active_track_ids.add(track_id)
+                            track = tracker.tracks.get(track_id)
+                            if track:
+                                object_manager.update_object_from_track(
+                                    track, processed_count, resized_frame,
+                                    attribute_models=attribute_models,
+                                    attr_update_interval=attr_update_interval
+                                )
+                        
+                        # Удаляем неактивные объекты
+                        object_manager.remove_inactive_objects(
+                            active_track_ids, 
+                            max_age=reid_cfg.get("max_age", 150)
+                        )
                     
                     if tracks and len(tracks) > 0:
-                        # Отрисовка с ID треков и номерами поездов
-                        result_frame = detector.draw_detections(
-                            resized_frame, tracks, show_track_ids=True, train_numbers=train_numbers
-                        )
+                        if use_objects:
+                            # Отрисовка с использованием объектов
+                            objects_info = []
+                            for track_id, class_id, confidence, x1, y1, x2, y2 in tracks:
+                                screen_object = object_manager.get_object_by_track_id(track_id)
+                                if screen_object:
+                                    objects_info.append({
+                                        'track_id': track_id,
+                                        'object_id': screen_object.object_id,
+                                        'object_type': screen_object.object_type,
+                                        'class_id': screen_object.class_id,
+                                        'bbox': (x1, y1, x2, y2),
+                                        'status': screen_object.status.value,
+                                        'profession': screen_object.profession,
+                                        'train_number': screen_object.train_number,
+                                        'frame_count': screen_object.frame_count,
+                                        'attributes': screen_object.attributes
+                                    })
+                            
+                            result_frame = detector.draw_objects(resized_frame, objects_info)
+                        else:
+                            # Старая отрисовка с ID треков и номерами поездов
+                            result_frame = detector.draw_detections(
+                                resized_frame, tracks, show_track_ids=True, train_numbers=train_numbers
+                            )
                     else:
                         # Если треки еще не созданы, показываем детекции без ID
                         result_frame = detector.draw_detections(resized_frame, detections, show_track_ids=False)
@@ -361,32 +539,70 @@ def process_video(video_path, detector, config):
                 # Отрисовка без ID
                 result_frame = detector.draw_detections(resized_frame, detections, show_track_ids=False)
             
+            # Отрисовка детекций PPE поверх основного результата
+            if use_ppe and ppe_detector is not None and ppe_detections:
+                result_frame = ppe_detector.draw_detections(result_frame, ppe_detections)
+            
             if debug_cfg.get("show_filtered_objects") and rejected:
                 result_frame = annotate_rejected(result_frame, rejected, detector, color=(0, 0, 255))
             
+            # Подсчет детекций PPE для статистики
+            ppe_count_by_class = {}
+            if use_ppe and ppe_detections:
+                for class_name, _, _, _, _, _ in ppe_detections:
+                    if class_name not in ppe_count_by_class:
+                        ppe_count_by_class[class_name] = 0
+                    ppe_count_by_class[class_name] += 1
+                    # Обновляем общий счетчик
+                    if class_name not in ppe_total_count:
+                        ppe_total_count[class_name] = 0
+                    ppe_total_count[class_name] += 1
+            
             # Информация на кадре
             if use_reid and tracker is not None and tracks:
-                # Подсчет уникальных треков
-                unique_tracks_by_class = {}
-                for track_id, class_id, _, _, _, _, _ in tracks:
-                    if class_id not in unique_tracks_by_class:
-                        unique_tracks_by_class[class_id] = set()
-                    unique_tracks_by_class[class_id].add(track_id)
-                
-                counts_text = " | ".join(
-                    f"{detector.CLASSES.get(cid, f'class_{cid}')}: {len(unique_tracks_by_class.get(cid, set()))}"
-                    for cid in target_classes
-                )
-                info_text = f"Кадр: {processed_count} | Треков: {len(tracks)}" + (f" | {counts_text}" if counts_text else "")
+                if use_objects and object_manager is not None:
+                    # Статистика по объектам
+                    stats = object_manager.get_statistics()
+                    counts_parts = []
+                    for object_type in sorted(stats.keys()):
+                        total = stats[object_type]['total']
+                        counts_parts.append(f"{object_type}: {total}")
+                    
+                    counts_text = " | ".join(counts_parts)
+                    info_text = f"Кадр: {processed_count} | Объектов: {len(tracks)}" + (f" | {counts_text}" if counts_text else "")
+                    
+                    # Добавляем информацию о PPE
+                    if ppe_count_by_class:
+                        ppe_parts = [f"{name}:{count}" for name, count in ppe_count_by_class.items()]
+                        info_text += " | PPE: " + ", ".join(ppe_parts)
+                else:
+                    # Подсчет уникальных треков (старый подход)
+                    unique_tracks_by_class = {}
+                    for track_id, class_id, _, _, _, _, _ in tracks:
+                        if class_id not in unique_tracks_by_class:
+                            unique_tracks_by_class[class_id] = set()
+                        unique_tracks_by_class[class_id].add(track_id)
+                    
+                    counts_text = " | ".join(
+                        f"{detector.CLASSES.get(cid, f'class_{cid}')}: {len(unique_tracks_by_class.get(cid, set()))}"
+                        for cid in target_classes
+                    )
+                    info_text = f"Кадр: {processed_count} | Треков: {len(tracks)}" + (f" | {counts_text}" if counts_text else "")
             else:
                 counts_text = " | ".join(
                     f"{detector.CLASSES.get(cid, f'class_{cid}')}: {detections_count[cid]}"
                     for cid in detections_count
                 )
                 info_text = f"Кадр: {processed_count}" + (f" | {counts_text}" if counts_text else "")
+                
+                # Добавляем информацию о PPE
+                if ppe_count_by_class:
+                    ppe_parts = [f"{name}:{count}" for name, count in ppe_count_by_class.items()]
+                    info_text += " | PPE: " + ", ".join(ppe_parts)
 
-            cv2.putText(result_frame, info_text, (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            # Убрана отрисовка информации на кадре (желтый текст)
+            # cv2.putText(result_frame, info_text, (10, 30),
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             
             # Сохранение результата
             if save_results:
@@ -424,13 +640,113 @@ def process_video(video_path, detector, config):
         print(f"Обработано кадров: {processed_count}")
         
         if use_reid and tracker is not None:
-            # Статистика по всем когда-либо созданным трекам
-            for cid in target_classes:
-                class_name = detector.CLASSES.get(cid, f"class_{cid}")
-                # Используем all_tracks_by_class для подсчета всех уникальных треков
-                unique_count = len(tracker.all_tracks_by_class.get(cid, set()))
-                active_count = len([t for t in tracker.tracks.values() if t.class_id == cid])
-                print(f"Уникальных треков {class_name}: {unique_count} (активных: {active_count})")
+            if use_objects and object_manager is not None:
+                # Статистика по объектам
+                print("\n=== Статистика объектов ===")
+                stats = object_manager.get_statistics()
+                for object_type, type_stats in stats.items():
+                    print(f"\n{object_type.upper()}:")
+                    print(f"  Всего объектов: {type_stats['total']}")
+                    if type_stats['by_status']:
+                        print("  По статусам:")
+                        for status, count in type_stats['by_status'].items():
+                            print(f"    {status}: {count}")
+                    if type_stats.get('by_colors'):
+                        print("  По цветам:")
+                        # Сортируем цвета по количеству (от большего к меньшему)
+                        sorted_colors = sorted(
+                            type_stats['by_colors'].items(), 
+                            key=lambda x: x[1], 
+                            reverse=True
+                        )
+                        for color, count in sorted_colors:
+                            print(f"    {color}: {count}")
+                    if type_stats.get('by_profession'):
+                        print("  По профессиям:")
+                        # Сортируем профессии по количеству (от большего к меньшему)
+                        sorted_professions = sorted(
+                            type_stats['by_profession'].items(), 
+                            key=lambda x: x[1], 
+                            reverse=True
+                        )
+                        for profession, count in sorted_professions:
+                            print(f"    {profession}: {count}")
+                    if type_stats.get('by_ppe'):
+                        print("  По PPE:")
+                        sorted_ppe = sorted(
+                            type_stats['by_ppe'].items(),
+                            key=lambda x: x[1],
+                            reverse=True
+                        )
+                        for ppe_item, count in sorted_ppe:
+                            print(f"    {ppe_item}: {count}")
+                    if type_stats.get('by_clothes'):
+                        print("  По одежде:")
+                        sorted_clothes = sorted(
+                            type_stats['by_clothes'].items(),
+                            key=lambda x: x[1],
+                            reverse=True
+                        )
+                        for clothes_item, count in sorted_clothes:
+                            print(f"    {clothes_item}: {count}")
+                
+                # Статистика по счетчикам состояний для каждого ID
+                print("\n=== Статистика по счетчикам состояний ===")
+                all_objects = object_manager.get_all_objects()
+                # Фильтруем объекты с менее 20 кадрами
+                min_frames_threshold = 20
+                valid_objects = [obj for obj in all_objects if obj.frame_count >= min_frames_threshold]
+                
+                if not valid_objects:
+                    print("Нет объектов, находящихся в кадре >= 20 кадров")
+                else:
+                    # Сортируем по типу и ID
+                    valid_objects.sort(key=lambda x: (x.object_type, x.object_id))
+                    
+                    for obj in valid_objects:
+                        print(f"{obj.object_type.upper()}#{obj.object_id}: "
+                              f"STAY={obj.stay_frames}, GO={obj.go_frames}, WORK={obj.work_frames}")
+                
+                # Детальная информация по объектам
+                if debug_cfg.get("log_detection_details"):
+                    print("\n=== Детальная информация об объектах ===")
+                    # Используем отфильтрованные объекты (>= 20 кадров)
+                    for obj in valid_objects:
+                        info = obj.get_info_dict()
+                        color_info_str = "unknown"
+                        if obj.color_info and obj.color_info.get('top_colors'):
+                            top_colors = obj.color_info.get('top_colors', [])
+                            if top_colors:
+                                # Формируем строку с цветами и процентами
+                                color_parts = []
+                                for color_item in top_colors[:3]:  # Берем до 3 основных цветов
+                                    name = color_item.get('name', 'unknown')
+                                    pct = color_item.get('percentage', 0.0)
+                                    color_parts.append(f"{name}({pct:.1%})")
+                                color_info_str = ", ".join(color_parts)
+                        
+                        profession_str = f", профессия={obj.profession}" if obj.profession else ""
+                        attrs_str = ""
+                        if obj.attributes:
+                            ppe_list = obj.attributes.get("ppe", [])
+                            clothes_list = obj.attributes.get("clothes", [])
+                            all_items = ppe_list + clothes_list
+                            if all_items:
+                                attrs_str = f", амуниция: {', '.join(all_items)}"
+                        
+                        print(f"{obj.object_type.upper()}#{obj.object_id}: "
+                              f"статус={obj.status.value}, кадров={obj.frame_count}, "
+                              f"цвета={color_info_str}{profession_str}{attrs_str}")
+                        if obj.train_number:
+                            print(f"  Номер поезда: {obj.train_number}")
+            else:
+                # Старая статистика по трекам
+                for cid in target_classes:
+                    class_name = detector.CLASSES.get(cid, f"class_{cid}")
+                    # Используем all_tracks_by_class для подсчета всех уникальных треков
+                    unique_count = len(tracker.all_tracks_by_class.get(cid, set()))
+                    active_count = len([t for t in tracker.tracks.values() if t.class_id == cid])
+                    print(f"Уникальных треков {class_name}: {unique_count} (активных: {active_count})")
         else:
             for cid, count in detections_count.items():
                 class_name = detector.CLASSES.get(cid, f"class_{cid}")
@@ -438,6 +754,15 @@ def process_video(video_path, detector, config):
         
         if rejected_total:
             print(f"Отклонено цветовым фильтром: {rejected_total}")
+        
+        # Статистика по PPE
+        if use_ppe and ppe_total_count:
+            print("\n=== Статистика PPE ===")
+            for ppe_class, count in sorted(ppe_total_count.items(), key=lambda x: x[1], reverse=True):
+                print(f"  {ppe_class}: {count} детекций")
+        
+        # Вывод текущего времени
+        
         if save_results and output_path:
             print(f"Видео сохранено: {output_path}")
 

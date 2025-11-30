@@ -1,14 +1,11 @@
-"""
-Модуль для загрузки конфигурации
-"""
 
 import os
 import sys
 import json
 
 
+
 def load_config(config_path="config.json"):
-    """Загрузка конфигурации"""
     # Получаем абсолютный путь к конфигу
     if not os.path.isabs(config_path):
         script_dir = os.path.dirname(os.path.abspath(__file__))

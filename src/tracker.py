@@ -1,6 +1,3 @@
-"""
-Модуль для отслеживания объектов между кадрами (re-identification)
-"""
 
 import numpy as np
 from typing import List, Tuple, Dict, Optional
@@ -9,21 +6,10 @@ from src.reid import FeatureExtractor
 
 
 class Track:
-    """Класс для представления трека объекта"""
-    
+
     def __init__(self, track_id: int, class_id: int, bbox: Tuple[int, int, int, int], 
                  confidence: float, features: np.ndarray, frame_num: int):
-        """
-        Инициализация трека
-        
-        Args:
-            track_id: уникальный ID трека
-            class_id: ID класса объекта
-            bbox: координаты (x1, y1, x2, y2)
-            confidence: уверенность детекции
-            features: вектор признаков
-            frame_num: номер кадра
-        """
+
         self.track_id = track_id
         self.class_id = class_id
         self.bbox = bbox
@@ -37,7 +23,6 @@ class Track:
         
     def update(self, bbox: Tuple[int, int, int, int], confidence: float, 
                features: np.ndarray, frame_num: int):
-        """Обновление трека"""
         self.bbox = bbox
         self.confidence = confidence
         # Обновляем признаки как взвешенное среднее
@@ -52,7 +37,6 @@ class Track:
             self.history.pop(0)
     
     def predict(self):
-        """Предсказание следующей позиции (простая линейная экстраполяция)"""
         if len(self.history) < 2:
             return self.bbox
         
@@ -76,23 +60,12 @@ class Track:
 
 
 class ReIDTracker:
-    """Трекер для re-identification объектов"""
-    
     def __init__(self, feature_extractor: FeatureExtractor, 
                  max_distance: float = 0.5,
                  max_age: int = 30,
                  min_hits: int = 1,
                  iou_threshold: float = 0.3):
-        """
-        Инициализация трекера
-        
-        Args:
-            feature_extractor: экстрактор признаков
-            max_distance: максимальное расстояние признаков для сопоставления
-            max_age: максимальный возраст трека без обновления
-            min_hits: минимальное количество попаданий для подтверждения трека
-            iou_threshold: порог IoU для сопоставления по позиции
-        """
+
         self.feature_extractor = feature_extractor
         self.max_distance = max_distance
         self.max_age = max_age
@@ -107,7 +80,7 @@ class ReIDTracker:
     
     def _compute_iou(self, bbox1: Tuple[int, int, int, int], 
                      bbox2: Tuple[int, int, int, int]) -> float:
-        """Вычисление IoU между двумя bbox"""
+
         x1_1, y1_1, x2_1, y2_1 = bbox1
         x1_2, y1_2, x2_2, y2_2 = bbox2
         
@@ -135,14 +108,7 @@ class ReIDTracker:
     def _associate_detections_to_tracks(self, detections: List[Tuple], 
                                        detection_features: np.ndarray,
                                        tracks: List[Track]) -> Tuple[List[int], List[int], List[int]]:
-        """
-        Сопоставление детекций с существующими треками
-        
-        Returns:
-            matched: список индексов (det_idx, track_idx)
-            unmatched_dets: список индексов несоответствующих детекций
-            unmatched_tracks: список индексов несоответствующих треков
-        """
+
         if len(tracks) == 0:
             return [], list(range(len(detections))), []
         
@@ -199,16 +165,7 @@ class ReIDTracker:
         return matched, unmatched_dets, unmatched_tracks
     
     def update(self, frame: np.ndarray, detections: List[Tuple]) -> List[Tuple]:
-        """
-        Обновление трекера новыми детекциями
-        
-        Args:
-            frame: текущий кадр
-            detections: список детекций [(class_id, confidence, x1, y1, x2, y2), ...]
-            
-        Returns:
-            список треков с ID: [(track_id, class_id, confidence, x1, y1, x2, y2), ...]
-        """
+
         self.frame_count += 1
         
         # Извлекаем признаки для всех детекций

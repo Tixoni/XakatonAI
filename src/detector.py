@@ -1,15 +1,10 @@
-"""
-Модуль для детекции объектов с использованием YOLO11
-"""
-
 import sys
 import cv2
 from ultralytics import YOLO
 
 
+
 class YOLODetector:
-    """Класс для детекции объектов с использованием YOLO11"""
-    
     CLASSES = {
         0: "person",
         6: "train"
@@ -22,16 +17,6 @@ class YOLODetector:
     
     def __init__(self, model_path="yolo11m.pt", conf_threshold=0.5, device="cpu",
                  custom_colors=None, half_precision=False):
-        """
-        Инициализация детектора YOLO11
-        
-        Args:
-            model_path: путь к модели YOLO11 (yolo11n.pt - nano, самый быстрый)
-            conf_threshold: порог уверенности
-            device: устройство для обработки (cpu, cuda и т.д.)
-            custom_colors: словарь пользовательских цветов
-            half_precision: использовать половинную точность
-        """
         self.conf_threshold = conf_threshold
         self.device = device
         self.half_precision = half_precision
@@ -53,7 +38,6 @@ class YOLODetector:
             self._apply_custom_colors(custom_colors)
     
     def _apply_custom_colors(self, colors_config):
-        """Применение пользовательских цветов"""
         for key, value in colors_config.items():
             class_id = self._resolve_class_id(key)
             color_tuple = self._parse_color(value)
@@ -69,7 +53,6 @@ class YOLODetector:
     
     @classmethod
     def _resolve_class_id(cls, key):
-        """Определение ID класса по имени или числу"""
         if isinstance(key, int):
             return key if key in cls.CLASSES else None
         if isinstance(key, str):
@@ -84,7 +67,6 @@ class YOLODetector:
     
     @staticmethod
     def _parse_color(value):
-        """Преобразование цвета в кортеж BGR"""
         if isinstance(value, (list, tuple)) and len(value) == 3:
             try:
                 b, g, r = [int(max(0, min(255, v))) for v in value]
@@ -94,16 +76,6 @@ class YOLODetector:
         return None
     
     def detect(self, frame, target_classes=None):
-        """
-        Детекция объектов на кадре
-        
-        Args:
-            frame: изображение (numpy array)
-            target_classes: список классов для детекции (None = все)
-            
-        Returns:
-            список детекций: [(class_id, confidence, x1, y1, x2, y2), ...]
-        """
         # Запускаем детекцию
         results = self.model(
             frame,
@@ -135,17 +107,7 @@ class YOLODetector:
         return detections
     
     def draw_detections(self, frame, detections, show_track_ids=False, train_numbers=None):
-        """
-        Отрисовка детекций на кадре
-        
-        Args:
-            frame: кадр для отрисовки
-            detections: список детекций
-                - Без трекинга: [(class_id, confidence, x1, y1, x2, y2), ...]
-                - С трекингом: [(track_id, class_id, confidence, x1, y1, x2, y2), ...]
-            show_track_ids: показывать ли ID треков (если True, ожидается формат с track_id)
-            train_numbers: словарь {track_id: train_number} для отображения номеров поездов
-        """
+
         result_frame = frame.copy()
         
         for det in detections:
@@ -168,10 +130,12 @@ class YOLODetector:
             # Формируем подпись
             class_name = self.CLASSES.get(class_id, 'unknown')
             if show_track_ids and track_id is not None:
-                label = f"ID:{track_id} {class_name}: {confidence:.2f}"
-                # Добавляем номер поезда, если есть
+                label = f"ID:{track_id} {class_name}"
+                # Добавляем номер поезда, если есть (отображаем так же, как в отладке)
                 if train_numbers and track_id in train_numbers and train_numbers[track_id]:
-                    label += f" №{train_numbers[track_id]}"
+                    label += f" {train_numbers[track_id]}"
+                else:
+                    label += f" {confidence:.2f}"
             else:
                 label = f"{class_name}: {confidence:.2f}"
             
@@ -195,5 +159,92 @@ class YOLODetector:
             # Текст
             cv2.putText(result_frame, label, (x1, label_y - baseline),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        
+        return result_frame
+    
+    def draw_objects(self, frame, objects_info):
+
+        result_frame = frame.copy()
+        
+        # Рисуем вертикальную линию посередине экрана (для определения WORK)
+        h, w = frame.shape[:2]
+        middle_x = w // 2
+        cv2.line(result_frame, (middle_x, 0), (middle_x, h), (255, 255, 0), 2)  # Желтая линия
+        
+        for obj_info in objects_info:
+            track_id = obj_info.get('track_id')
+            object_id = obj_info.get('object_id')
+            object_type = obj_info.get('object_type', 'unknown')
+            class_id = obj_info.get('class_id', 0)
+            bbox = obj_info.get('bbox')
+            status = obj_info.get('status', 'unknown')
+            train_number = obj_info.get('train_number')
+            frame_count = obj_info.get('frame_count', 0)
+            attributes = obj_info.get('attributes', {})
+            
+            if not bbox:
+                continue
+            
+            x1, y1, x2, y2 = bbox
+            color = self.colors.get(class_id, (0, 0, 255))
+            
+            # Рисуем прямоугольник
+            cv2.rectangle(result_frame, (x1, y1), (x2, y2), color, 2)
+            
+            # Формируем подпись: только тип, ID и статус (без профессии)
+            label_parts = [f"{object_type.upper()}#{object_id}"]
+            
+            # Добавляем статус
+            if status != 'unknown':
+                label_parts.append(f"[{status}]")
+            
+            label = " ".join(label_parts)
+            
+            label_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+            label_height = label_size[1] + baseline
+            
+            # Размещаем текст сверху рамки
+            label_y = y1 - 5
+            if label_y < label_height:
+                label_y = y1 + label_height + 5
+            
+            # Фон для текста
+            bg_y1 = label_y - label_height
+            bg_y2 = label_y
+            cv2.rectangle(result_frame, (x1, bg_y1),
+                         (x1 + label_size[0], bg_y2), color, -1)
+            
+            # Текст
+            cv2.putText(result_frame, label, (x1, label_y - baseline),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            
+            # Отрисовка атрибутов (PPE и одежда) для людей
+            if object_type == "person" and attributes:
+                ppe_list = attributes.get("ppe", [])
+                clothes_list = attributes.get("clothes", [])
+                all_items = ppe_list + clothes_list
+                
+                if all_items:
+                    # Формируем строку с атрибутами
+                    attrs_text = ", ".join(all_items[:5])  # Ограничиваем до 5 элементов для читаемости
+                    if len(all_items) > 5:
+                        attrs_text += "..."
+                    
+                    # Размер текста атрибутов (меньше основного)
+                    attrs_size, attrs_baseline = cv2.getTextSize(attrs_text, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+                    attrs_height = attrs_size[1] + attrs_baseline
+                    
+                    # Размещаем атрибуты под основной подписью
+                    attrs_y = label_y + attrs_height + 5
+                    
+                    # Фон для текста атрибутов (светло-серый)
+                    attrs_bg_y1 = attrs_y - attrs_height
+                    attrs_bg_y2 = attrs_y
+                    cv2.rectangle(result_frame, (x1, attrs_bg_y1),
+                                 (x1 + attrs_size[0], attrs_bg_y2), (100, 100, 100), -1)
+                    
+                    # Текст атрибутов
+                    cv2.putText(result_frame, attrs_text, (x1, attrs_y - attrs_baseline),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
         
         return result_frame

@@ -3,7 +3,6 @@ import numpy as np
 import os
 
 def imread_unicode(image_path):
-    """Чтение изображения с поддержкой кириллицы в пути"""
     image_path = os.path.normpath(image_path)
     try:
         with open(image_path, "rb") as f:
@@ -18,8 +17,8 @@ def imread_unicode(image_path):
     except:
         return None
 
+
 def resize_frame(frame, max_width, max_height, maintain_aspect=True, keep_width_native=False):
-    """Изменение размера кадра с сохранением пропорций"""
     height, width = frame.shape[:2]
     
     if keep_width_native:
@@ -51,9 +50,21 @@ def resize_frame(frame, max_width, max_height, maintain_aspect=True, keep_width_
     resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
     return resized, scale
 
-def extract_roi(frame, x1, y1, x2, y2):
-    """Вырезает область интереса"""
+def extract_roi(frame, x1, y1, x2, y2, crop_border_ratio=0.0):
     h, w = frame.shape[:2]
+    
+    # Применяем обрезку краев, если указано
+    if crop_border_ratio > 0.0 and crop_border_ratio < 0.5:
+        width = x2 - x1
+        height = y2 - y1
+        crop_x = int(width * crop_border_ratio)
+        crop_y = int(height * crop_border_ratio)
+        x1 = x1 + crop_x
+        y1 = y1 + crop_y
+        x2 = x2 - crop_x
+        y2 = y2 - crop_y
+    
+    # Проверяем границы
     x1 = max(0, min(w - 1, x1))
     x2 = max(0, min(w, x2))
     y1 = max(0, min(h - 1, y1))

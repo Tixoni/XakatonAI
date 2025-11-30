@@ -1,7 +1,3 @@
-"""
-Модуль для извлечения признаков (features) для re-identification
-"""
-
 import cv2
 import numpy as np
 from typing import List, Tuple, Optional
@@ -12,16 +8,8 @@ from src.image_utils import extract_roi
 
 
 class FeatureExtractor:
-    """Класс для извлечения признаков из изображений объектов"""
-    
     def __init__(self, device="cpu", feature_dim=128):
-        """
-        Инициализация экстрактора признаков
-        
-        Args:
-            device: устройство для обработки (cpu/cuda)
-            feature_dim: размерность вектора признаков
-        """
+
         self.device = device
         self.feature_dim = feature_dim
         self.model = self._build_model()
@@ -38,7 +26,6 @@ class FeatureExtractor:
         ])
     
     def _build_model(self):
-        """Построение модели для извлечения признаков"""
         # Используем упрощенную архитектуру на основе ResNet
         # Можно заменить на предобученную модель для person re-id
         model = nn.Sequential(
@@ -63,16 +50,7 @@ class FeatureExtractor:
         return model
     
     def extract_features(self, frame: np.ndarray, detections: List[Tuple]) -> np.ndarray:
-        """
-        Извлечение признаков для всех детекций
-        
-        Args:
-            frame: кадр изображения (BGR)
-            detections: список детекций [(class_id, confidence, x1, y1, x2, y2), ...]
-            
-        Returns:
-            массив признаков shape=(n_detections, feature_dim)
-        """
+
         if len(detections) == 0:
             return np.array([])
         
@@ -112,16 +90,7 @@ class FeatureExtractor:
         return np.array(features_list)
     
     def compute_distance(self, features1: np.ndarray, features2: np.ndarray) -> float:
-        """
-        Вычисление расстояния между двумя векторами признаков (cosine distance)
-        
-        Args:
-            features1: первый вектор признаков
-            features2: второй вектор признаков
-            
-        Returns:
-            расстояние (0-1, где 0 - идентичны, 1 - максимально разные)
-        """
+
         if features1.shape != features2.shape:
             return 1.0
         
@@ -140,16 +109,7 @@ class FeatureExtractor:
         return max(0.0, min(1.0, distance))
     
     def compute_distance_matrix(self, features1: np.ndarray, features2: np.ndarray) -> np.ndarray:
-        """
-        Вычисление матрицы расстояний между двумя наборами признаков
-        
-        Args:
-            features1: массив признаков shape=(n1, feature_dim)
-            features2: массив признаков shape=(n2, feature_dim)
-            
-        Returns:
-            матрица расстояний shape=(n1, n2)
-        """
+
         if len(features1) == 0 or len(features2) == 0:
             return np.array([])
         
